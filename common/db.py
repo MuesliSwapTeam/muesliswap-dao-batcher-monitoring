@@ -57,11 +57,12 @@ class UTxO(Base):
     id: Mapped[str] = mapped_column(primary_key=True, index=True)
     hash: Mapped[str]
     output_idx: Mapped[int]  # This is the index of output UTXO within this TX
-    slot_no: Mapped[int] = mapped_column(BigInteger)
+    created_slot_no: Mapped[int] = mapped_column(BigInteger)
+    spent_slot_no: Mapped[int] = mapped_column(BigInteger, nullable=True)
     header_hash: Mapped[str]  # Required in case of Kupo restart
     index: Mapped[int]  # This is the index of TX within block, I think
     owner: Mapped[str]
-    timestamp: Mapped[int] = mapped_column(BigInteger)
+    # timestamp: Mapped[int] = mapped_column(BigInteger)
     value: Mapped[dict] = mapped_column(JSON)
     datum_hash: Mapped[str] = mapped_column(
         nullable=True
@@ -90,7 +91,7 @@ class Order(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     # Smart contract version eg. v1 orderbook, v2 orderbook, staking
-    protocol:Mapped[str] = mapped_column()
+    protocol: Mapped[str] = mapped_column()
     tx_id: Mapped[int] = mapped_column(
         ForeignKey(Tx.id, ondelete="cascade", onupdate="cascade"), index=True
     )
@@ -114,19 +115,14 @@ class Order(Base):
     ask_amount: Mapped[Decimal]
     bid_amount: Mapped[Decimal]
 
-    batcher_pkh:Mapped[str]=mapped_column(index=True)
-    batcher_skh:Mapped[str]=mapped_column(index=True)
+    batcher_pkh: Mapped[str] = mapped_column(index=True)
+    batcher_skh: Mapped[str] = mapped_column(index=True)
 
     # Additional batcher addresses?
-
 
     # To calculate how quickly the batcher fills the order
     placed_slot_no: Mapped[int] = mapped_column(BigInteger, index=True)
     fulfilled_slot_no: Mapped[int] = mapped_column(BigInteger, index=True)
-
-
-
-
 
     # By using the following relationship we avoid adding a new table
     cancellation_id: Mapped[int] = mapped_column(
@@ -147,8 +143,6 @@ class Order(Base):
     )
     cancellation: Mapped["Cancellation"] = relationship(back_populates="order")
     full_match: Mapped["FullMatch"] = relationship(back_populates="order")
-
-
 
     # Avoids changing the schema if we want to parse something new from the trade UTxO/datum
     dex_specifics: Mapped[dict] = mapped_column(JSON, nullable=True)
@@ -179,7 +173,6 @@ class Order(Base):
         Index("order_sender_pkh", "sender_pkh"),
         Index("order_sender_skh", "sender_skh"),
     )
-
 
 
 class PartialMatch(Base):
@@ -232,7 +225,6 @@ class FullMatch(Base):
     # block in which the match occurred (kept here since we don't track the utxo)
     slot_no: Mapped[int]
     tx_hash: Mapped[str]
-
 
 
 ########################################################################################

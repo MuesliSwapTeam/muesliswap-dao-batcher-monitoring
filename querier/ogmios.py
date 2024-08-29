@@ -1,89 +1,67 @@
-import json
-import orjson
-import logging
-
-import websocket
-
-from . import BlockIterator
-from .config import OGMIOS_URL
+import ogmios
+from ogmios.datatypes import Point
 from .rollback import RollbackHandler
-import ipdb
 
-_LOGGER = logging.getLogger(__name__)
-
-TEMPLATE = {
-    "jsonrpc": "2.0",
-}
-
-NEXT_BLOCK = TEMPLATE.copy()
-NEXT_BLOCK["method"] = "nextBlock"
-NEXT_BLOCK = orjson.dumps(NEXT_BLOCK)
-
-QUERY_UTXOS_TEMPLATE = TEMPLATE.copy()
-QUERY_UTXOS_TEMPLATE["method"] = "queryLedgerState/utxo"
+num_blocks_to_queue = 100
 
 
-class OgmiosIterator(BlockIterator):
-
+class OgmiosIterator:
     def __init__(self):
-        self.utxo_info = {}
+        pass
 
-    def init_connection(self, start_slot, start_hash):
-        self.ws = websocket.WebSocket()
+    def _init_connection(self, client: ogmios.Client, start_slot_no, start_block_hash):
         try:
-            self.ws.connect(OGMIOS_URL)
-        except OSError as ex:
-            raise Exception(f"Can't connect to Ogmios server on {OGMIOS_URL}") from ex
-
-        data = TEMPLATE.copy()
-        data["method"] = "findIntersection"
-        data["params"] = {"points": [{"slot": start_slot, "id": start_hash}]}
-
-        _LOGGER.info(
-            f"findIntersection, setting last block to: {start_slot}.{start_hash}"
-        )
-        self.ws.send(orjson.dumps(data))
-        resp = orjson.loads(self.ws.recv())
-        # Example in case of rollback: 01]: [2023-09-25 11:21:02,061] INFO     querier.ogmios {'IntersectionNotFound': {'tip': {'slot': 104074568, 'hash': '82>
-        if "error" in resp.keys():
-            # Rollback: We need to find the last common ancestor block (i believe this can't be more than the security parameter, so we can just iterate backwards until we find it)
+            point, _, _ = client.find_intersection(
+                Point(slot=start_slot_no, id=start_block_hash)
+            )
+        except Exception as e:
             rollback_handler = RollbackHandler()
             while True:
                 slot, block_hash = rollback_handler.prev_block()
-                data["params"]["points"][0] = {"slot": slot, "id": block_hash}
-                self.ws.send(orjson.dumps(data))
-                resp = orjson.loads(self.ws.recv())
-                if "error" in resp.keys():
+                try:
+                    point, _, _ = client.find_intersection(
+                        Point(slot=slot, id=block_hash)
+                    )
                     rollback_handler.rollback()
                     break
+                except:
+                    pass
+        finally:
+            client.next_block.send()
+            client.next_block.receive()
 
-        self.ws.send(NEXT_BLOCK)
-        self.ws.recv()  # this just says roll back to the intersection (we already did)
+    def iterate_blocks(self, start_slot_no, start_block_hash):
 
-    def iterate_blocks(self):
-        # we want to always keep 100 blocks in queue to avoid waiting for node
-        for i in range(100):
-            self.ws.send(NEXT_BLOCK)
-        while True:
-            resp = self.ws.recv()
-            # fast: check whether string is anywhere in tx
-            if "backward" in resp:
-                # slow: deserialize and check if value in correct field
-                resp = orjson.loads(resp)
-                if resp["result"]["direction"] == "backward":
-                    # TODO change this logic. should be handled more gracefully
-                    raise Exception(
-                        "Ogmios Rollback!"
-                    )  # this will restart querier and trigger rollback above
-            # This handles responses to requests made by Querier for transaction input UTxOs
-            if "queryLedgerState/utxo" in resp:
-                resp = orjson.loads(resp)
-                if resp["method"] == "queryLedgerState/utxo":
-                    for utxo in resp["result"]:
-                        self.utxo_info[
-                            f"{utxo['transaction']['id']}#{utxo['transaction']['index']}"
-                        ] = utxo
-                    self.ws.send(NEXT_BLOCK)
-                    continue
-            self.ws.send(NEXT_BLOCK)
-            yield resp
+        with ogmios.Client() as client:
+            # Ensures that the client points to the latest block in our database
+            self._init_connection(client, start_slot_no, start_block_hash)
+            for i in range(num_blocks_to_queue):
+                client.next_block.send()
+            while True:
+                direction, tip, block, _ = client.next_block.receive()
+                if direction == ogmios.Direction.backward:
+                    raise Exception("Ogmios Rollback!")
+                client.next_block.send()
+                yield block
+
+
+if __name__ == "__main__":
+    import common.db as db
+    import config
+
+    start_slot_no, start_block_hash, _ = db.get_max_slot_block_and_index()
+    if start_slot_no > 0:
+        rollback_handler = RollbackHandler()
+        rollback_handler.prev_block()
+        rollback_handler.rollback()
+
+    # Now we find out what's the actual block that we should process first
+    start_slot_no, start_block_hash, _ = db.get_max_slot_block_and_index()
+    if start_slot_no == 0 or not start_block_hash:
+        start_slot_no = config.DEFAULT_START_SLOT
+        start_block_hash = config.DEFAULT_START_HASH
+
+    iterator = OgmiosIterator()
+    block_generator = iterator.iterate_blocks(start_slot_no, start_block_hash)
+    for block in block_generator:
+        print(block)
