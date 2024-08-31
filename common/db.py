@@ -19,7 +19,7 @@ from decimal import Decimal
 import datetime
 from fractions import Fraction
 from math import ceil, floor
-from typing import Optional
+from typing import Optional, List
 
 import ipdb
 
@@ -52,127 +52,180 @@ class Base(DeclarativeBase):
 
 
 class UTxO(Base):
+    """
+    Unspent UTxOs. These are stored so that we can calculate the batcher profits.
+    """
+
     __tablename__ = "UTxO"
 
-    id: Mapped[str] = mapped_column(primary_key=True, index=True)
-    hash: Mapped[str]
-    output_idx: Mapped[int]  # This is the index of output UTXO within this TX
-    created_slot_no: Mapped[int] = mapped_column(BigInteger)
-    spent_slot_no: Mapped[int] = mapped_column(BigInteger, nullable=True)
-    header_hash: Mapped[str]  # Required in case of Kupo restart
-    index: Mapped[int]  # This is the index of TX within block, I think
-    owner: Mapped[str]
-    # timestamp: Mapped[int] = mapped_column(BigInteger)
-    value: Mapped[dict] = mapped_column(JSON)
-    datum_hash: Mapped[str] = mapped_column(
-        nullable=True
-    )  # hash of the attached output datum, if available
-    inline_datum: Mapped[bool]  # whether the datum is inline or not
-    datum: Mapped[str] = mapped_column(
-        nullable=True
-    )  # CBOR hex of the attached output datum, if available
+    id: Mapped[str] = mapped_column(primary_key=True, index=True)  # Txhash#output_idx
 
-    # TODO: this can often be null, or else make it not back populate
-    order: Mapped["Order"] = relationship(back_populates="tx", cascade="all, delete")
+    owner: Mapped[str]  # Address that owns this UTxO
+    value: Mapped[dict] = mapped_column(JSON)  # Dictionary of assets
+
+    created_slot: Mapped[int] = mapped_column(BigInteger)
+    spent_slot: Mapped[int] = mapped_column(BigInteger)
 
     # There can be more swaps in a single tx, this corresponds to one swap
     # Therefore we require only that (tx hash + output utxo idx) is unique
-    __table_args__ = (
-        UniqueConstraint("hash", "output_idx", name="unique_utxo"),
-        Index("utxo_by_hash_and_idx", "hash", "output_idx"),
-    )
+    # __table_args__ = (
+    #     UniqueConstraint("hash", "output_idx", name="unique_utxo"),
+    #     Index("utxo_by_hash_and_idx", "hash", "output_idx"),
+    # )
 
     def __repr__(self) -> str:
         return f"{self.hash}#{self.output_idx}"
 
 
-class Order(Base):
-    __tablename__ = "Order"
+class Batcher(Base):
+    """
+    Represents a single batcher entity
+    """
+
+    # TODO maybe add some stats here
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    # Smart contract version eg. v1 orderbook, v2 orderbook, staking
-    protocol: Mapped[str] = mapped_column()
-    tx_id: Mapped[int] = mapped_column(
-        ForeignKey(Tx.id, ondelete="cascade", onupdate="cascade"), index=True
-    )
+    addresses = relationship("BatcherAddress", back_populates="batcher")
+    transactions = relationship("Transaction", back_populates="batcher")
 
-    # how much of the asked amount was received so far
-    fulfilled_amount: Mapped[Decimal]
-    # how much of the bid amount was paid so far
-    paid_amount: Mapped[Decimal]
-    batcher_fee: Mapped[Decimal]
-    # Part of fee that was paid until now in case of partial matches
-    # paid_fee: Mapped[Decimal]
 
-    sender_pkh: Mapped[str]
-    sender_skh: Mapped[str]
-    beneficiary_pkh: Mapped[str]
-    beneficiary_skh: Mapped[str]
+class BatcherAddress(Base):
+    """
+    Represents a batcher address (each batcher may have multiple wallets)
+    """
 
-    # ask = to, bid = from
-    ask_token: Mapped[str] = mapped_column(index=True)
-    bid_token: Mapped[str] = mapped_column(index=True)
-    ask_amount: Mapped[Decimal]
-    bid_amount: Mapped[Decimal]
+    address: Mapped[str] = mapped_column(primary_key=True)
+    batcher_id: Mapped[int] = mapped_column(ForeignKey(Batcher.id))
+    batcher = relationship("Batcher", back_populates="addresses")
 
-    batcher_pkh: Mapped[str] = mapped_column(index=True)
-    batcher_skh: Mapped[str] = mapped_column(index=True)
 
-    # Additional batcher addresses?
+class Order(Base):
+    """
+    Represents an order. Includes info from the UTxO and datum
+    """
 
-    # To calculate how quickly the batcher fills the order
-    placed_slot_no: Mapped[int] = mapped_column(BigInteger, index=True)
-    fulfilled_slot_no: Mapped[int] = mapped_column(BigInteger, index=True)
-
-    # By using the following relationship we avoid adding a new table
-    cancellation_id: Mapped[int] = mapped_column(
-        ForeignKey("Cancellation.id", ondelete="SET NULL", onupdate="cascade"),
-        index=True,
+    id: Mapped[str] = mapped_column(primary_key=True)  # Txhash#output_idx
+    sender: Mapped[str]  # Address that receives funds if cancelled
+    recipient: Mapped[str]  # Address that receives funds if fulfilled
+    slot: Mapped[int] = mapped_column(
+        BigInteger
+    )  # Slot in which the order was placed (UTxO was created)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("Transaction.id", ondelete="SET NULL", onupdate="cascade"),
         nullable=True,
     )
+    transaction = relationship("Transaction", back_populates="orders")
 
-    full_match_id: Mapped[int] = mapped_column(
-        ForeignKey("FullMatch.id", ondelete="SET NULL", onupdate="cascade"),
-        index=True,
-        nullable=True,
+
+class Transaction(Base):
+    """
+    Represents a transaction
+    """
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    orders: Mapped[List[Order]] = relationship(back_populates="transaction")
+    batcher_id: Mapped[int] = mapped_column(
+        ForeignKey("Batcher.id"),
     )
+    batcher: Mapped[Batcher] = relationship(back_populates="transactions")
+    ada_revenue: Mapped[int] = mapped_column(
+        BigInteger
+    )  # Net ada difference between inputs and outputs. TODO may not be necessary
+    network_fee: Mapped[int] = mapped_column(BigInteger)
+    equivalent_ada: Mapped[int] = mapped_column(
+        BigInteger
+    )  # Net revenue converted to ada at current prices
+    net_assets: Mapped[dict] = mapped_column(JSON)
+    slot: Mapped[int] = mapped_column(BigInteger)
 
-    tx: Mapped[Tx] = relationship(back_populates="order")
-    partial_matches: Mapped[List["PartialMatch"]] = relationship(
-        back_populates="order", cascade="all, delete", order_by="PartialMatch.slot_no"
-    )
-    cancellation: Mapped["Cancellation"] = relationship(back_populates="order")
-    full_match: Mapped["FullMatch"] = relationship(back_populates="order")
 
-    # Avoids changing the schema if we want to parse something new from the trade UTxO/datum
-    dex_specifics: Mapped[dict] = mapped_column(JSON, nullable=True)
+# class Order(Base):
+#     __tablename__ = "Order"
 
-    def get_current_utxo(self):
-        """returns the most recent orderbook utxo - either original or partial match"""
-        if len(self.partial_matches) > 0:
-            return self.partial_matches[-1].new_utxo
-        return self.tx
+#     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+#     # Smart contract version eg. v1 orderbook, v2 orderbook, staking
+#     protocol: Mapped[str] = mapped_column()
+#     tx_id: Mapped[int] = mapped_column(
+#         ForeignKey(Tx.id, ondelete="cascade", onupdate="cascade"), index=True
+#     )
 
-    # def get_status(self) -> OrderStatus:
-    #     if self.cancellation_id is not None:
-    #         return OrderStatus.CANCELLED
-    #     if self.full_match_id is not None:
-    #         return OrderStatus.FULFILLED
-    #     if len(self.partial_matches) > 0:
-    #         return OrderStatus.PARTIAL_MATCH
-    #     return OrderStatus.OPEN
+#     # how much of the asked amount was received so far
+#     fulfilled_amount: Mapped[Decimal]
+#     # how much of the bid amount was paid so far
+#     paid_amount: Mapped[Decimal]
+#     batcher_fee: Mapped[Decimal]
+#     # Part of fee that was paid until now in case of partial matches
+#     # paid_fee: Mapped[Decimal]
 
-    # def finalized_at(self) -> int | None:
-    #     if self.cancellation is not None:
-    #         return util.slot_datestring(self.cancellation.slot_no)
-    #     if self.full_match is not None:
-    #         return util.slot_datestring(self.full_match.slot_no)
-    #     return None
+#     sender_pkh: Mapped[str]
+#     sender_skh: Mapped[str]
+#     beneficiary_pkh: Mapped[str]
+#     beneficiary_skh: Mapped[str]
 
-    __table_args__ = (
-        Index("order_sender_pkh", "sender_pkh"),
-        Index("order_sender_skh", "sender_skh"),
-    )
+#     # ask = to, bid = from
+#     ask_token: Mapped[str] = mapped_column(index=True)
+#     bid_token: Mapped[str] = mapped_column(index=True)
+#     ask_amount: Mapped[Decimal]
+#     bid_amount: Mapped[Decimal]
+
+#     batcher_pkh: Mapped[str] = mapped_column(index=True)
+#     batcher_skh: Mapped[str] = mapped_column(index=True)
+
+#     # Additional batcher addresses?
+
+#     # To calculate how quickly the batcher fills the order
+#     placed_slot_no: Mapped[int] = mapped_column(BigInteger, index=True)
+#     fulfilled_slot_no: Mapped[int] = mapped_column(BigInteger, index=True)
+
+#     # By using the following relationship we avoid adding a new table
+#     cancellation_id: Mapped[int] = mapped_column(
+#         ForeignKey("Cancellation.id", ondelete="SET NULL", onupdate="cascade"),
+#         index=True,
+#         nullable=True,
+#     )
+
+#     full_match_id: Mapped[int] = mapped_column(
+#         ForeignKey("FullMatch.id", ondelete="SET NULL", onupdate="cascade"),
+#         index=True,
+#         nullable=True,
+#     )
+
+#     tx: Mapped[Tx] = relationship(back_populates="order")
+#     partial_matches: Mapped[List["PartialMatch"]] = relationship(
+#         back_populates="order", cascade="all, delete", order_by="PartialMatch.slot_no"
+#     )
+#     cancellation: Mapped["Cancellation"] = relationship(back_populates="order")
+#     full_match: Mapped["FullMatch"] = relationship(back_populates="order")
+
+#     # Avoids changing the schema if we want to parse something new from the trade UTxO/datum
+#     dex_specifics: Mapped[dict] = mapped_column(JSON, nullable=True)
+
+#     def get_current_utxo(self):
+#         """returns the most recent orderbook utxo - either original or partial match"""
+#         if len(self.partial_matches) > 0:
+#             return self.partial_matches[-1].new_utxo
+#         return self.tx
+
+#     # def get_status(self) -> OrderStatus:
+#     #     if self.cancellation_id is not None:
+#     #         return OrderStatus.CANCELLED
+#     #     if self.full_match_id is not None:
+#     #         return OrderStatus.FULFILLED
+#     #     if len(self.partial_matches) > 0:
+#     #         return OrderStatus.PARTIAL_MATCH
+#     #     return OrderStatus.OPEN
+
+#     # def finalized_at(self) -> int | None:
+#     #     if self.cancellation is not None:
+#     #         return util.slot_datestring(self.cancellation.slot_no)
+#     #     if self.full_match is not None:
+#     #         return util.slot_datestring(self.full_match.slot_no)
+#     #     return None
+
+#     __table_args__ = (
+#         Index("order_sender_pkh", "sender_pkh"),
+#         Index("order_sender_skh", "sender_skh"),
+#     )
 
 
 class PartialMatch(Base):

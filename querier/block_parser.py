@@ -6,10 +6,11 @@ import datetime
 import logging
 
 import util
-from common.db import UTxO, Order, _ENGINE
+from common.db import UTxO, Order, _ENGINE, Transaction
 
 
 _LOGGER = logging.getLogger(__name__)
+PRICE_UPDATE_INTERVAL = 180
 
 
 class BlockParser:
@@ -20,7 +21,9 @@ class BlockParser:
         self.engine = _ENGINE
         self.current_slot = -1
 
-        self.open_orders = util.initialise_open_orders()
+        self.open_orders = util.initialise_open_orders(engine=self.engine)
+        self.prices = util.get_prices()
+        self.latest_price_update = datetime.datetime.now() if self.prices else -1
 
     def add_open_order(self, tx_id: str, contract_version: int):
         self.open_orders[tx_id] = contract_version
@@ -40,6 +43,10 @@ class BlockParser:
         _LOGGER.info(
             f"Processing block height: {self.current_slot} ({block_time.isoformat()})"
         )
+        if block_time - self.latest_price_update > PRICE_UPDATE_INTERVAL:
+            self.prices = util.get_prices()
+            self.latest_price_update = block_time
+            # TODO check if these times are in the same format
 
         for tx in block.transactions:
             # TODO add error handling here if necessary
@@ -53,6 +60,10 @@ class BlockParser:
         ]
         calculate_analytics = False
         for input_id in inputs:
+            utxo = session.query(UTxO).filter_by(id=input_id).first()
+            if utxo:
+                utxo.spent_slot = self.current_slot
+
             if input_id in self.open_orders:
                 # smart_contract_version = self.open_orders[input_utxo_id]
                 # TODO: investigate muesli_orders logic
@@ -65,14 +76,27 @@ class BlockParser:
             if len(input_utxos) != len(inputs):
                 # TODO check which are missing and get them from backup
                 pass
-        output_utxos = [util.parse_output(output) for output in tx["outputs"]]
+            orders = session.query(Order).filter(Order.id.in_(order_inputs))
+        output_utxos = [
+            util.parse_output(output, f"{tx['id']}#{idx}", self.current_slot)
+            for idx, output in enumerate(tx["outputs"])
+        ]
         session.add_all(output_utxos)
 
         if calculate_analytics:
             analytics = util.calculate_analytics(
-                inputs=input_utxos,
-                outputs=output_utxos,
-                order_inputs=order_inputs,
+                inputs=inputs,
+                outputs=[output for output in output_utxos if isinstance(output, UTxO)],
+                orders=orders,
                 prices=self.prices,
+            )
+            session.add(
+                Transaction(
+                    equivalent_ada=equivalent_ada,
+                    net_assets=net_assets,
+                    slot=self.current_slot,
+                    network_fee=network_fee,
+                    orders=orders,
+                )
             )
             # TODO implement

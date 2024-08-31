@@ -50,25 +50,7 @@ class RollbackHandler:
         # delete everything newer than the block that we roll back to
         _LOGGER.warning(f"Executing rollback to block {self.slot}.{self.block_hash}")
 
-        # query all PartialMatch-es in this timeframe (we could also use timestamp in where)
-        q = self.session.query(PartialMatch).where(PartialMatch.slot_no > self.slot)
-        for pm in q.all():
-            # subtract partially matched amount from fulfilled amount and we're done
-            pm.order.fulfilled_amount -= pm.matched_amount
-            pm.order.paid_amount -= pm.paid_amount
-
-        q = self.session.query(FullMatch).where(FullMatch.slot_no > self.slot)
-        for match in q.all():
-            match.order.fulfilled_amount -= match.matched_amount
-            match.order.paid_amount -= match.paid_amount
-
         # Deleting UTxO will also delete placed orders, partial matches and pool states
         self.session.execute(sqla.delete(UTxO).where(UTxO.slot_no > self.slot))
-        self.session.execute(
-            sqla.delete(FullMatch).where(FullMatch.slot_no > self.slot)
-        )
-        self.session.execute(
-            sqla.delete(Cancellation).where(Cancellation.slot_no > self.slot)
-        )
 
         self.session.commit()
