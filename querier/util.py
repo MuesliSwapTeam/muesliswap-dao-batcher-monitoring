@@ -1,10 +1,12 @@
-import datetime
 import requests
 import pickle
-from common.db import Batcher, BatcherAddress, Order, Transaction, UTxO
 from typing import List
 from sqlalchemy.orm import Session
 import sqlalchemy
+from cardano_python_utils.datums import datum_from_cborhex
+import ipdb
+
+from common.db import Batcher, BatcherAddress, Order, Transaction, UTxO
 from common.util import parse_assets_to_list
 from .config import MUESLI_ADDR_TO_VERSION, PRICE_EP, MUESLI_POOL_ADDRESSES
 
@@ -38,15 +40,22 @@ def initialise_open_orders(engine: sqlalchemy.engine) -> dict:
     with Session(engine) as session:
         query = session.query(Order.id).filter(Order.transaction_id == None)
         for row in query.all():
-            open_orders[f"{row[0]}#{row[1]}"] = row[2]
+            # TODO change this to a list
+            open_orders[row[0]] = True
     return open_orders
 
 
-def parse_output(output: dict, id: str, slot: int) -> UTxO:
+def parse_output(
+    tx: dict,
+    output: dict,
+    id: str,
+    slot: int,
+    block_hash: str,
+) -> UTxO:
     contract_version = MUESLI_ADDR_TO_VERSION.get(output["address"], None)
     if contract_version:
         # Muesliswap order
-        sender, recipient = parse_datum(output["datum"], contract_version)
+        sender, recipient = parse_datum(tx, output, contract_version)
         return Order(
             id=id,
             sender=sender,
@@ -56,22 +65,42 @@ def parse_output(output: dict, id: str, slot: int) -> UTxO:
     else:
         # Generic UTxO. Stored in case it is a batcher's UTxO in a future transaction
         return UTxO(
-            id=id, value=output["value"], owner=output["address"], created_slot=slot
+            id=id,
+            value=output["value"],
+            owner=output["address"],
+            created_slot=slot,
+            block_hash=block_hash,
         )
 
 
-def parse_datum(datum: dict, contract_version: str):
+def parse_datum(tx: dict, output: dict, contract_version: str):
+
+    datum_hex = output.get("datum", None)
+    datum_hash = output.get("datumHash", None)
+    if datum_hex is not None:
+        datum = datum_from_cborhex(datum_hex)
+    elif datum_hash in tx["datums"]:
+        datum = datum_from_cborhex(tx["datums"][datum_hash])
+    else:
+        # TODO handle muesli v1 reconstruct datum from metadata
+        pass
+
+    if "lq" in contract_version:
+        sender_pkh, sender_skh = parse_wallet_address(datum["fields"][0])
+        recipient_pkh, recipient_skh = parse_wallet_address(datum["fields"][1])
+        return sender_pkh + sender_skh, recipient_pkh + recipient_skh
 
     if contract_version in ["v2", "v3", "v4"]:
         datum = datum["fields"][0]["fields"]
-        creator = parse_wallet_address(datum[0])
+        sender_skh, sender_pkh = parse_wallet_address(datum[0])
+        sender = sender_pkh + sender_skh
         # buy_token = Token(datum[1]["bytes"], datum[2]["bytes"])
         # sell_token = Token(datum[3]["bytes"], datum[4]["bytes"])
         # buy_amount = int(datum[5]["int"])
         # allow_partial = datum[6]["constructor"] == 1
         # not actually used by SC, frontend only; someone even omits this
         # lovelace_attached = int(datum[7]["int"]) if len(datum) > 7 else 0
-        return creator, creator
+        return sender, sender
 
 
 def parse_wallet_address(datum: dict):

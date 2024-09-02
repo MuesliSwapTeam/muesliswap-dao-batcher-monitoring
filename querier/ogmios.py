@@ -11,16 +11,16 @@ class OgmiosIterator:
 
     def _init_connection(self, client: ogmios.Client, start_slot_no, start_block_hash):
         try:
-            point, _, _ = client.find_intersection(
-                Point(slot=start_slot_no, id=start_block_hash)
+            point, _, _ = client.find_intersection.execute(
+                [Point(slot=start_slot_no, id=start_block_hash)]
             )
         except Exception as e:
             rollback_handler = RollbackHandler()
             while True:
                 slot, block_hash = rollback_handler.prev_block()
                 try:
-                    point, _, _ = client.find_intersection(
-                        Point(slot=slot, id=block_hash)
+                    point, _, _ = client.find_intersection.execute(
+                        [Point(slot=slot, id=block_hash)]
                     )
                     rollback_handler.rollback()
                     break
@@ -47,16 +47,17 @@ class OgmiosIterator:
 
 if __name__ == "__main__":
     import common.db as db
-    import config
+    import querier.config as config
+    import ipdb
 
-    start_slot_no, start_block_hash, _ = db.get_max_slot_block_and_index()
+    start_slot_no, start_block_hash = db.get_max_slot_block_and_index()
     if start_slot_no > 0:
         rollback_handler = RollbackHandler()
         rollback_handler.prev_block()
         rollback_handler.rollback()
 
     # Now we find out what's the actual block that we should process first
-    start_slot_no, start_block_hash, _ = db.get_max_slot_block_and_index()
+    start_slot_no, start_block_hash = db.get_max_slot_block_and_index()
     if start_slot_no == 0 or not start_block_hash:
         start_slot_no = config.DEFAULT_START_SLOT
         start_block_hash = config.DEFAULT_START_HASH
@@ -65,3 +66,4 @@ if __name__ == "__main__":
     block_generator = iterator.iterate_blocks(start_slot_no, start_block_hash)
     for block in block_generator:
         print(block)
+        ipdb.set_trace()

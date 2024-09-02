@@ -1,0 +1,16 @@
+[2024-09-02 14:54:38,623] INFO     querier.block_parser Processing block height: 125879186 (2024-06-03T22:11:17)
+[2024-09-02 15:01:34,565] INFO     querier.block_parser Processing block height: 125879186 (2024-06-03T22:11:17)
+[2024-09-02 15:01:46,958] INFO     querier.block_parser Processing block height: 125879186 (2024-06-03T22:11:17)
+[2024-09-02 15:01:46,969] INFO     querier.block_parser Removed spent UTxOs up to slot 125792786
+[2024-09-02 15:01:47,006] INFO     querier.block_parser Processing block height: 125879232 (2024-06-03T22:12:03)
+[2024-09-02 15:01:47,035] INFO     querier.block_parser Processing block height: 125879238 (2024-06-03T22:12:09)
+[2024-09-02 15:01:47,050] INFO     querier.block_parser Processing block height: 125879242 (2024-06-03T22:12:13)
+[2024-09-02 15:01:47,188] INFO     querier.block_parser Processing block height: 125879282 (2024-06-03T22:12:53)
+[2024-09-02 15:01:47,239] INFO     querier.block_parser Processing block height: 125879291 (2024-06-03T22:13:02)
+[2024-09-02 15:01:47,347] INFO     querier.block_parser Processing block height: 125879389 (2024-06-03T22:14:40)
+[2024-09-02 15:03:01,860] WARNING  querier.rollback Starting rollback from 125879291.208e6c0e7a0555e981cd33694a7502d65983dd94775346ffb4fcc293ba9cfa75
+[2024-09-02 15:03:01,860] WARNING  querier.rollback Rolled back 9 blocks, now at 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+[2024-09-02 15:03:01,860] WARNING  querier.rollback Executing rollback to block 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+[2024-09-02 15:03:02,426] INFO     querier.block_parser Processing block height: 125879291 (2024-06-03T22:13:02)
+[2024-09-02 15:03:02,458] INFO     querier.block_parser Removed spent UTxOs up to slot 125792891
+[2024-09-02 15:03:02,487] INFO     querier.block_parser Processing block height: 125879389 (2024-06-03T22:14:40)

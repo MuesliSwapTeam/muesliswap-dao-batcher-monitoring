@@ -1,0 +1,3 @@
+WARNING querier.rollback Starting rollback from 125879291.208e6c0e7a0555e981cd33694a7502d65983dd94775346ffb4fcc293ba9cfa75
+WARNING querier.rollback Rolled back 9 blocks, now at 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+WARNING querier.rollback Executing rollback to block 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6

@@ -6,11 +6,11 @@ import ipdb
 from common.db import (
     _ENGINE,
     UTxO,
-    PartialMatch,
+    # PartialMatch,
     Order,
     get_max_slot_block_and_index,
-    FullMatch,
-    Cancellation,
+    # FullMatch,
+    # Cancellation,
 )
 
 
@@ -21,13 +21,13 @@ _LOGGER = logging.getLogger(__name__)
 
 class RollbackHandler:
     def __init__(self):
-        self.slot, self.block_hash, _ = get_max_slot_block_and_index()
+        self.slot, self.block_hash = get_max_slot_block_and_index()
         self.original_slot = self.slot
         _LOGGER.warning(f"Starting rollback from {self.slot}.{self.block_hash}")
         stmt = (
-            sqla.select(UTxO.slot_no, UTxO.header_hash)
+            sqla.select(UTxO.created_slot, UTxO.block_hash)
             .distinct()  # otherwise we'd revert to 1 block >1 times
-            .order_by(UTxO.slot_no.desc())
+            .order_by(UTxO.created_slot.desc())
         )
         self.session = Session(_ENGINE)
         self.res = self.session.execute(stmt)
@@ -51,6 +51,6 @@ class RollbackHandler:
         _LOGGER.warning(f"Executing rollback to block {self.slot}.{self.block_hash}")
 
         # Deleting UTxO will also delete placed orders, partial matches and pool states
-        self.session.execute(sqla.delete(UTxO).where(UTxO.slot_no > self.slot))
+        self.session.execute(sqla.delete(UTxO).where(UTxO.created_slot > self.slot))
 
         self.session.commit()

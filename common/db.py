@@ -64,7 +64,11 @@ class UTxO(Base):
     value: Mapped[dict] = mapped_column(JSON)  # Dictionary of assets
 
     created_slot: Mapped[int] = mapped_column(BigInteger)
-    spent_slot: Mapped[int] = mapped_column(BigInteger)
+    spent_slot: Mapped[int] = mapped_column(BigInteger, nullable=True)
+
+    block_hash: Mapped[str] = mapped_column(
+        index=True
+    )  # Used to sync ogmios. Corresponds to block containining transaction that creates UTxO
 
     # There can be more swaps in a single tx, this corresponds to one swap
     # Therefore we require only that (tx hash + output utxo idx) is unique
@@ -74,13 +78,15 @@ class UTxO(Base):
     # )
 
     def __repr__(self) -> str:
-        return f"{self.hash}#{self.output_idx}"
+        return self.id
 
 
 class Batcher(Base):
     """
     Represents a single batcher entity
     """
+
+    __tablename__ = "Batcher"
 
     # TODO maybe add some stats here
 
@@ -94,6 +100,8 @@ class BatcherAddress(Base):
     Represents a batcher address (each batcher may have multiple wallets)
     """
 
+    __tablename__ = "BatcherAddress"
+
     address: Mapped[str] = mapped_column(primary_key=True)
     batcher_id: Mapped[int] = mapped_column(ForeignKey(Batcher.id))
     batcher = relationship("Batcher", back_populates="addresses")
@@ -103,6 +111,8 @@ class Order(Base):
     """
     Represents an order. Includes info from the UTxO and datum
     """
+
+    __tablename__ = "Order"
 
     id: Mapped[str] = mapped_column(primary_key=True)  # Txhash#output_idx
     sender: Mapped[str]  # Address that receives funds if cancelled
@@ -121,6 +131,8 @@ class Transaction(Base):
     """
     Represents a transaction
     """
+
+    __tablename__ = "Transaction"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     orders: Mapped[List[Order]] = relationship(back_populates="transaction")
@@ -228,56 +240,56 @@ class Transaction(Base):
 #     )
 
 
-class PartialMatch(Base):
-    __tablename__ = "PartialMatch"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(
-        ForeignKey(Order.id, ondelete="cascade", onupdate="cascade")
-    )
-    new_utxo_id: Mapped[str] = mapped_column(
-        ForeignKey(Tx.id, ondelete="cascade", onupdate="cascade")
-    )
-    order: Mapped[Order] = relationship(
-        back_populates="partial_matches",
-        cascade="all, delete",
-        foreign_keys=[order_id],
-        uselist=False,
-    )
-    new_utxo: Mapped[Tx] = relationship(
-        cascade="all, delete", foreign_keys=[new_utxo_id], uselist=False
-    )
-    matched_amount: Mapped[Decimal]  # not cumulative
-    paid_amount: Mapped[Decimal]  # not cumulative
-    slot_no: Mapped[int]
-    __table_args__ = (
-        UniqueConstraint("order_id", "new_utxo_id", name="unique_utxo_order_pm_pair"),
-        Index("partial_match_by_order_utxo", "order_id", "new_utxo_id"),
-        Index("partial_match_by_order_slot_no", "order_id", "slot_no"),
-    )
+# class PartialMatch(Base):
+#     __tablename__ = "PartialMatch"
+#     id: Mapped[int] = mapped_column(primary_key=True)
+#     order_id: Mapped[int] = mapped_column(
+#         ForeignKey(Order.id, ondelete="cascade", onupdate="cascade")
+#     )
+#     new_utxo_id: Mapped[str] = mapped_column(
+#         ForeignKey(Tx.id, ondelete="cascade", onupdate="cascade")
+#     )
+#     order: Mapped[Order] = relationship(
+#         back_populates="partial_matches",
+#         cascade="all, delete",
+#         foreign_keys=[order_id],
+#         uselist=False,
+#     )
+#     new_utxo: Mapped[Tx] = relationship(
+#         cascade="all, delete", foreign_keys=[new_utxo_id], uselist=False
+#     )
+#     matched_amount: Mapped[Decimal]  # not cumulative
+#     paid_amount: Mapped[Decimal]  # not cumulative
+#     slot_no: Mapped[int]
+#     __table_args__ = (
+#         UniqueConstraint("order_id", "new_utxo_id", name="unique_utxo_order_pm_pair"),
+#         Index("partial_match_by_order_utxo", "order_id", "new_utxo_id"),
+#         Index("partial_match_by_order_slot_no", "order_id", "slot_no"),
+#     )
 
 
-class Cancellation(Base):
-    __tablename__ = "Cancellation"
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    order: Mapped[Order] = relationship(
-        back_populates="cancellation", cascade="all, delete", uselist=False
-    )
-    # block in which the match occurred (kept here since we don't track the utxo)
-    slot_no: Mapped[int]
-    tx_hash: Mapped[str]
+# class Cancellation(Base):
+#     __tablename__ = "Cancellation"
+#     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+#     order: Mapped[Order] = relationship(
+#         back_populates="cancellation", cascade="all, delete", uselist=False
+#     )
+#     # block in which the match occurred (kept here since we don't track the utxo)
+#     slot_no: Mapped[int]
+#     tx_hash: Mapped[str]
 
 
-class FullMatch(Base):
-    __tablename__ = "FullMatch"
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    order: Mapped[Order] = relationship(
-        back_populates="full_match", cascade="all, delete", uselist=False
-    )
-    matched_amount: Mapped[Decimal]  # not cumulative
-    paid_amount: Mapped[Decimal]  # not cumulative
-    # block in which the match occurred (kept here since we don't track the utxo)
-    slot_no: Mapped[int]
-    tx_hash: Mapped[str]
+# class FullMatch(Base):
+#     __tablename__ = "FullMatch"
+#     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+#     order: Mapped[Order] = relationship(
+#         back_populates="full_match", cascade="all, delete", uselist=False
+#     )
+#     matched_amount: Mapped[Decimal]  # not cumulative
+#     paid_amount: Mapped[Decimal]  # not cumulative
+#     # block in which the match occurred (kept here since we don't track the utxo)
+#     slot_no: Mapped[int]
+#     tx_hash: Mapped[str]
 
 
 ########################################################################################
@@ -291,16 +303,15 @@ def get_max_slot_block_and_index() -> tuple:
     in the database.
     """
     stmt = (
-        sqla.select(Tx.slot_no, Tx.header_hash, Tx.index)
-        .join(Tx.order)
-        .order_by(Tx.slot_no.desc(), Tx.index.desc())
+        sqla.select(UTxO.created_slot, UTxO.block_hash)
+        .order_by(UTxO.created_slot.desc(), UTxO.block_hash.desc())
         .limit(1)
     )
     with Session(_ENGINE) as session:
         res = session.execute(stmt).first()
         session.rollback()
     if not res:
-        return 0, "", 0
+        return 0, ""
     return res  # type: ignore
 
 
