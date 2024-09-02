@@ -10,7 +10,7 @@ import querier.util as util
 from common.db import UTxO, Order, _ENGINE, Transaction
 from common.util import slot_timestamp
 from .cleanup import remove_spent_utxos
-from .config import BLOCKFROST
+from .config import BLOCKFROST, MUESLI_POOL_ADDRESSES
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,7 +38,10 @@ class BlockParser:
     def run(self):
         for i, block in enumerate(self.iterator.iterate_blocks()):
             with orm.Session(self.engine) as session:
-                self.process_block(block, session)
+                try:
+                    self.process_block(block, session)
+                except Exception as e:
+                    ipdb.post_mortem()
                 session.commit()
             if i % 1000 == 0:
                 oldest_slot = remove_spent_utxos(self.current_slot)
@@ -61,7 +64,7 @@ class BlockParser:
             self.process_tx(tx, block, session)
 
     def process_tx(self, tx, block, session):
-        order_inputs = []
+        order_ids = []
         input_ids = [f"{d['transaction']['id']}#{d['index']}" for d in tx["inputs"]]
         calculate_analytics = False
         for input_id in input_ids:
@@ -72,20 +75,42 @@ class BlockParser:
                 # smart_contract_version = self.open_orders[input_utxo_id]
                 # TODO: investigate muesli_orders logic
                 # orders.add(input_utxo_id)
-                ipdb.set_trace()
                 calculate_analytics = True
                 self.remove_open_order(input_id)
-                order_inputs.append(input_id)
+                order_ids.append(input_id)
         if calculate_analytics:
             input_utxos = session.query(UTxO).filter(UTxO.id.in_(input_ids)).all()
-            if len(input_utxos) != len(input_ids):
+            # Number of cash UTxOs plus number of order UTxOs should equal total number of inputs
+            if (len(input_utxos) + len(order_ids)) != len(input_ids):
                 try:
                     utxos = BLOCKFROST.transaction_utxos(tx["id"])
-                    ipdb.set_trace()
+                    stored_ids = [utxo.id for utxo in input_utxos]
+
+                    for utxo in utxos.inputs:
+                        input_id = f"{utxo.tx_hash}#{utxo.output_index}"
+                        # fmt: off
+                        if (
+                            input_id not in stored_ids # Make sure we don't add duplicates
+                            and input_id in input_ids # Make sure the input is actually in the transaction
+                            and input_id not in order_ids # Make sure the input is not an order
+                        ):
+                        # fmt: on
+                            input_utxos.append(
+                                UTxO(
+                                    id=input_id,
+                                    value=util.parse_value_bf_to_ogmios(utxo.amount),
+                                    owner=utxo.address,
+                                    created_slot=self.current_slot,  # TODO
+                                    block_hash="",  # TODO
+                                )
+                            )
+                            # Blockfrost can return multiple instances of the same input,
+                            # and also inputs that are not in the transaction (why?)
+                            stored_ids.append(input_id)
                 except Exception as e:
                     _LOGGER.error(f"Error fetching UTxOs: {e}")
                     return
-            orders = session.query(Order).filter(Order.id.in_(order_inputs))
+            orders = session.query(Order).filter(Order.id.in_(order_ids)).all()
         output_utxos = [
             util.parse_output(
                 tx=tx,
@@ -104,19 +129,29 @@ class BlockParser:
 
         if calculate_analytics:
             network_fee = tx["fee"]["ada"]["lovelace"]
-            analytics = util.calculate_analytics(
-                inputs=inputs,
-                outputs=[output for output in output_utxos if isinstance(output, UTxO)],
+            batcher, ada_revenue, net_assets, equivalent_ada = util.calculate_analytics(
+                inputs=[i for i in input_utxos if i.owner not in MUESLI_POOL_ADDRESSES],
+                outputs=[
+                    output
+                    for output in output_utxos
+                    if (
+                        isinstance(output, UTxO)
+                        and output.owner not in MUESLI_POOL_ADDRESSES
+                    )
+                ],
                 orders=orders,
+                session=session,
                 prices=self.prices,
             )
             session.add(
                 Transaction(
+                    batcher=batcher,
+                    ada_revenue=ada_revenue,
+                    network_fee=network_fee,
                     equivalent_ada=equivalent_ada,
                     net_assets=net_assets,
                     slot=self.current_slot,
-                    network_fee=network_fee,
                     orders=orders,
+                    tx_hash=tx["id"],
                 )
             )
-            # TODO implement

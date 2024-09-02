@@ -18,10 +18,15 @@ def slot_datestring(slot_no: int) -> int:
     )
 
 
-def parse_assets_to_list(txo: dict) -> List[Asset]:
-    assets_without_ada = {k: v for k, v in txo["value"].items() if k != "ada"}
+def parse_assets_to_list(value: dict) -> List[Asset]:
     return [
-        Asset(value, Token(policy_id, tokenname))
-        for policy_id, inner_dict in assets_without_ada.items()
-        for tokenname, value in inner_dict.items()
+        Asset(
+            int(amount),
+            Token(
+                policy_id if policy_id != "ada" else "",
+                tokenname if tokenname != "lovelace" else "",
+            ),
+        )
+        for policy_id, inner_dict in value.items()
+        for tokenname, amount in inner_dict.items()
     ]

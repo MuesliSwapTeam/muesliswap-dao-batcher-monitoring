@@ -149,6 +149,7 @@ class Transaction(Base):
     )  # Net revenue converted to ada at current prices
     net_assets: Mapped[dict] = mapped_column(JSON)
     slot: Mapped[int] = mapped_column(BigInteger)
+    tx_hash: Mapped[str]
 
 
 # class Order(Base):

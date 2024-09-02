@@ -1,10 +1,14 @@
 import requests
 import pickle
-from typing import List
+from typing import List, Tuple
 from sqlalchemy.orm import Session
 import sqlalchemy
 from cardano_python_utils.datums import datum_from_cborhex
+from cardano_python_utils.classes import Token, LOVELACE, ShelleyAddress
 import ipdb
+from argparse import Namespace
+from collections import defaultdict
+
 
 from common.db import Batcher, BatcherAddress, Order, Transaction, UTxO
 from common.util import parse_assets_to_list
@@ -34,6 +38,7 @@ def get_prices():
 
 
 def initialise_open_orders(engine: sqlalchemy.engine) -> dict:
+    # TODO query blockfrost for open orders that have not yet been seen
 
     open_orders = dict()
 
@@ -114,27 +119,50 @@ def parse_wallet_address(datum: dict):
     return (pkh, skh)
 
 
+def parse_value_bf_to_ogmios(value: Namespace) -> dict:
+    ret = {}
+    for asset in value:
+        token = Token.from_hex(asset.unit)
+        ret[token.policy_id] = {token.name: asset.quantity}
+
+    return ret
+
+
 def calculate_analytics(
     inputs: List[UTxO],
     outputs: List[UTxO],
     orders: List[Order],
-    network_fee: int,
     session: Session,
     prices=None,
-):
-    # TODO get fee
-    recipients = [o.recipient for o in orders]
-    senders = [o.sender for o in orders]
+) -> Tuple[Batcher, dict, int, int]:
+    """
+    Returns the batcher, batcher's ADA revenue, a dictionary mapping non-ADA tokens to their revenue
+    and a sum of the non-ADA amounts converted to ADA using the latest prices.
+    """
+    recipients = [
+        ShelleyAddress(
+            mainnet=True, pubkeyhash=o.recipient[:56], stakekeyhash=o.recipient[56:]
+        ).bech32
+        for o in orders
+    ]
+    senders = [
+        ShelleyAddress(
+            mainnet=True, pubkeyhash=o.sender[:56], stakekeyhash=o.sender[56:]
+        ).bech32
+        for o in orders
+    ]
 
-    in_assets = {}
-    addresses = []
+    in_assets = defaultdict(int)
+    addresses = set()
     for input_utxo in inputs:
-        if input_utxo.owner in MUESLI_POOL_ADDRESSES:
-            continue
-        addresses.append(input_utxo.owner)
+        # if input_utxo.owner in MUESLI_POOL_ADDRESSES:
+        #     continue
+        addresses.add(input_utxo.owner)
         assets = parse_assets_to_list(input_utxo.value)
         for asset in assets:
-            in_assets[asset.token] = asset.amount
+            in_assets[asset.token] += asset.amount
+
+    addresses = list(addresses)
 
     if len(addresses) == 1:
         try:
@@ -154,7 +182,6 @@ def calculate_analytics(
                 f"Multiple batchers associated with address: {addresses[0]}"
             )
     else:
-
         batcher_list = []
         unassociated_addresses = []
         for address in addresses:
@@ -170,32 +197,33 @@ def calculate_analytics(
                     unassociated_addresses.append(address)
             except:
                 raise Exception(f"Multiple batchers associated with address: {address}")
-
+        if len(batcher_list) == 0:
+            batcher = Batcher()
+            session.add(batcher)
         if len(batcher_list) > 1:
             for i in range(1, len(batcher_list)):
                 if batcher_list[0].id != batcher_list[i].id:
                     for address in batcher_list[i].addresses:
                         address.batcher_id = batcher_list[0].id
                     session.delete(batcher_list[i])
-
-        batcher = batcher_list[0]
+            batcher = batcher_list[0]
         for unassociated_address in unassociated_addresses:
             addr = BatcherAddress(address=unassociated_address, batcher=batcher)
             session.add(addr)
 
-    out_assets = {}
+    out_assets = defaultdict(int)
     for output_utxo in outputs:
         if (
-            output.owner in recipients
-            or output.owner in senders
-            or output.owner in MUESLI_POOL_ADDRESSES
+            output_utxo.owner in recipients
+            or output_utxo.owner in senders
+            # or output_utxo.owner in MUESLI_POOL_ADDRESSES
         ):
             continue
         assets = parse_assets_to_list(output_utxo.value)
         for asset in assets:
-            out_assets[asset.token] = asset.amount
+            out_assets[asset.token] += asset.amount
 
-    differences = {}
+    differences = defaultdict(int)
     for token, amount in out_assets.items():
         if token in in_assets:
             differences[token] = amount - in_assets[token]
@@ -207,11 +235,23 @@ def calculate_analytics(
             differences[token] = -amount
 
     ada_revenue = 0
+    equivalent_ada = 0
+    zero_revenue_tokens = []
     for token, amount in differences.items():
-        if token == "ada":
+        if amount == 0:
+            zero_revenue_tokens.append(token)
+            continue
+        if token == LOVELACE:
             ada_revenue += amount
         else:
-            ada_revenue += amount * prices[("", token)]
+            equivalent_ada += (
+                amount * prices.get(("", token.subject), {"price": 0})["price"]
+            )
+    for token in zero_revenue_tokens:
+        del differences[token]
 
-    ada_profit = ada_revenue - network_fee
-    return differences, ada_revenue, ada_profit
+    del differences[LOVELACE]
+
+    differences = {k.to_hex(): v for k, v in differences.items()}
+
+    return (batcher, ada_revenue, differences, equivalent_ada)
