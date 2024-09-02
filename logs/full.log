@@ -14,3 +14,62 @@
 [2024-09-02 15:03:02,426] INFO     querier.block_parser Processing block height: 125879291 (2024-06-03T22:13:02)
 [2024-09-02 15:03:02,458] INFO     querier.block_parser Removed spent UTxOs up to slot 125792891
 [2024-09-02 15:03:02,487] INFO     querier.block_parser Processing block height: 125879389 (2024-06-03T22:14:40)
+[2024-09-02 15:26:41,909] WARNING  querier.rollback Starting rollback from 125879291.208e6c0e7a0555e981cd33694a7502d65983dd94775346ffb4fcc293ba9cfa75
+[2024-09-02 15:26:41,909] WARNING  querier.rollback Rolled back 9 blocks, now at 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+[2024-09-02 15:26:41,910] WARNING  querier.rollback Executing rollback to block 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+[2024-09-02 15:26:58,659] INFO     querier.block_parser Processing block height: 125879186 (2024-06-03T22:11:17)
+[2024-09-02 15:26:58,676] INFO     querier.block_parser Removed spent UTxOs up to slot 125792786
+[2024-09-02 15:26:58,774] INFO     querier.block_parser Processing block height: 125879232 (2024-06-03T22:12:03)
+[2024-09-02 15:26:58,806] INFO     querier.block_parser Processing block height: 125879238 (2024-06-03T22:12:09)
+[2024-09-02 15:26:58,821] INFO     querier.block_parser Processing block height: 125879242 (2024-06-03T22:12:13)
+[2024-09-02 15:26:58,974] INFO     querier.block_parser Processing block height: 125879282 (2024-06-03T22:12:53)
+[2024-09-02 15:26:59,019] INFO     querier.block_parser Processing block height: 125879291 (2024-06-03T22:13:02)
+[2024-09-02 15:26:59,127] INFO     querier.block_parser Processing block height: 125879389 (2024-06-03T22:14:40)
+[2024-09-02 15:30:23,651] WARNING  querier.rollback Starting rollback from 125879291.208e6c0e7a0555e981cd33694a7502d65983dd94775346ffb4fcc293ba9cfa75
+[2024-09-02 15:30:23,651] WARNING  querier.rollback Rolled back 9 blocks, now at 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+[2024-09-02 15:30:23,652] WARNING  querier.rollback Executing rollback to block 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+[2024-09-02 15:30:37,114] INFO     querier.block_parser Processing block height: 125879186 (2024-06-03T22:11:17)
+[2024-09-02 15:30:37,129] INFO     querier.block_parser Removed spent UTxOs up to slot 125792786
+[2024-09-02 15:30:37,147] INFO     querier.block_parser Processing block height: 125879232 (2024-06-03T22:12:03)
+[2024-09-02 15:30:37,177] INFO     querier.block_parser Processing block height: 125879238 (2024-06-03T22:12:09)
+[2024-09-02 15:30:37,330] INFO     querier.block_parser Processing block height: 125879242 (2024-06-03T22:12:13)
+[2024-09-02 15:30:37,391] INFO     querier.block_parser Processing block height: 125879282 (2024-06-03T22:12:53)
+[2024-09-02 15:30:37,438] INFO     querier.block_parser Processing block height: 125879291 (2024-06-03T22:13:02)
+[2024-09-02 15:30:37,546] INFO     querier.block_parser Processing block height: 125879389 (2024-06-03T22:14:40)
+[2024-09-02 15:31:58,264] ERROR    __main__ Exception in Ogmios thread
+Traceback (most recent call last):
+  File "/home/padowd/openswap/muesliswap-batcher-analytics/venv/lib/python3.12/site-packages/websockets/sync/connection.py", line 683, in send_context
+    self.send_data()
+  File "/home/padowd/openswap/muesliswap-batcher-analytics/venv/lib/python3.12/site-packages/websockets/sync/connection.py", line 745, in send_data
+    self.socket.sendall(data)
+BrokenPipeError: [Errno 32] Broken pipe
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/padowd/openswap/muesliswap-batcher-analytics/querier/__main__.py", line 101, in _run_ogmios_async
+    for block in block_generator:
+  File "/home/padowd/openswap/muesliswap-batcher-analytics/querier/ogmios.py", line 44, in iterate_blocks
+    client.next_block.send()
+  File "/home/padowd/openswap/muesliswap-batcher-analytics/venv/lib/python3.12/site-packages/ogmios/chainsync/NextBlock.py", line 60, in send
+    self.client.send(pld.json())
+  File "/home/padowd/openswap/muesliswap-batcher-analytics/venv/lib/python3.12/site-packages/ogmios/client.py", line 125, in send
+    self.connection.send(request)
+  File "/home/padowd/openswap/muesliswap-batcher-analytics/venv/lib/python3.12/site-packages/websockets/sync/connection.py", line 288, in send
+    with self.send_context():
+  File "/home/padowd/miniconda3/lib/python3.12/contextlib.py", line 144, in __exit__
+    next(self.gen)
+  File "/home/padowd/openswap/muesliswap-batcher-analytics/venv/lib/python3.12/site-packages/websockets/sync/connection.py", line 728, in send_context
+    raise self.protocol.close_exc from original_exc
+websockets.exceptions.ConnectionClosedError: no close frame received or sent
+[2024-09-02 15:32:12,659] WARNING  querier.rollback Starting rollback from 125879291.208e6c0e7a0555e981cd33694a7502d65983dd94775346ffb4fcc293ba9cfa75
+[2024-09-02 15:32:12,660] WARNING  querier.rollback Rolled back 9 blocks, now at 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+[2024-09-02 15:32:12,660] WARNING  querier.rollback Executing rollback to block 125879282.a783eb661f85f67fb11a5e003bd720a85ab02091a6137bc0ed883ce35eb2c3c6
+[2024-09-02 15:32:25,446] INFO     querier.block_parser Processing block height: 125879186 (2024-06-03T22:11:17)
+[2024-09-02 15:32:25,459] INFO     querier.block_parser Removed spent UTxOs up to slot 125792786
+[2024-09-02 15:32:25,481] INFO     querier.block_parser Processing block height: 125879232 (2024-06-03T22:12:03)
+[2024-09-02 15:32:25,516] INFO     querier.block_parser Processing block height: 125879238 (2024-06-03T22:12:09)
+[2024-09-02 15:32:25,528] INFO     querier.block_parser Processing block height: 125879242 (2024-06-03T22:12:13)
+[2024-09-02 15:32:26,411] INFO     querier.block_parser Processing block height: 125879282 (2024-06-03T22:12:53)
+[2024-09-02 15:32:26,460] INFO     querier.block_parser Processing block height: 125879291 (2024-06-03T22:13:02)
+[2024-09-02 15:32:26,502] INFO     querier.block_parser Processing block height: 125879389 (2024-06-03T22:14:40)

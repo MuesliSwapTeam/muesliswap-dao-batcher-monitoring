@@ -1,6 +1,7 @@
 import os
+import blockfrost
 
-from cardano_python_utils.classes import Bech32Addr, ShelleyAddress
+from secret import BLOCKFROST_PROJECT_ID
 
 
 MUESLISWAP_POOLS_API_URL = "https://api.muesliswap.com/liquidity/pools"
@@ -41,3 +42,6 @@ DEFAULT_START_HASH = "f6566cd85706932d8e60d02cdd882640ec358e73b0c8171d969045c1bb
 
 OGMIOS_URL = os.environ.get("OGMIOS_URL", "ws://localhost:1337")
 PRICE_EP = "https://aggregator-analytics.muesliswap.com/v2/all-prices"
+BLOCKFROST = blockfrost.BlockFrostApi(
+    BLOCKFROST_PROJECT_ID, base_url="https://cardano-mainnet.blockfrost.io/api"
+)

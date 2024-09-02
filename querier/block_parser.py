@@ -10,6 +10,7 @@ import querier.util as util
 from common.db import UTxO, Order, _ENGINE, Transaction
 from common.util import slot_timestamp
 from .cleanup import remove_spent_utxos
+from .config import BLOCKFROST
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,9 +62,9 @@ class BlockParser:
 
     def process_tx(self, tx, block, session):
         order_inputs = []
-        inputs = [f"{d['transaction']['id']}#{d['index']}" for d in tx["inputs"]]
+        input_ids = [f"{d['transaction']['id']}#{d['index']}" for d in tx["inputs"]]
         calculate_analytics = False
-        for input_id in inputs:
+        for input_id in input_ids:
             utxo = session.query(UTxO).filter_by(id=input_id).first()
             if utxo:
                 utxo.spent_slot = self.current_slot
@@ -76,10 +77,14 @@ class BlockParser:
                 self.remove_open_order(input_id)
                 order_inputs.append(input_id)
         if calculate_analytics:
-            input_utxos = session.query(UTxO).filter(UTxO.id.in_(inputs)).all()
-            if len(input_utxos) != len(inputs):
-                # TODO check which are missing and get them from backup
-                pass
+            input_utxos = session.query(UTxO).filter(UTxO.id.in_(input_ids)).all()
+            if len(input_utxos) != len(input_ids):
+                try:
+                    utxos = BLOCKFROST.transaction_utxos(tx["id"])
+                    ipdb.set_trace()
+                except Exception as e:
+                    _LOGGER.error(f"Error fetching UTxOs: {e}")
+                    return
             orders = session.query(Order).filter(Order.id.in_(order_inputs))
         output_utxos = [
             util.parse_output(
