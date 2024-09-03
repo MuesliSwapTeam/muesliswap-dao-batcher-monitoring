@@ -70,13 +70,6 @@ class UTxO(Base):
         index=True
     )  # Used to sync ogmios. Corresponds to block containining transaction that creates UTxO
 
-    # There can be more swaps in a single tx, this corresponds to one swap
-    # Therefore we require only that (tx hash + output utxo idx) is unique
-    # __table_args__ = (
-    #     UniqueConstraint("hash", "output_idx", name="unique_utxo"),
-    #     Index("utxo_by_hash_and_idx", "hash", "output_idx"),
-    # )
-
     def __repr__(self) -> str:
         return self.id
 
@@ -136,11 +129,9 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     orders: Mapped[List[Order]] = relationship(back_populates="transaction")
-    batcher_id: Mapped[int] = mapped_column(
-        ForeignKey("Batcher.id"),
-    )
+    batcher_id: Mapped[int] = mapped_column(ForeignKey("Batcher.id"), nullable=True)
     batcher: Mapped[Batcher] = relationship(back_populates="transactions")
-    ada_revenue: Mapped[int] = mapped_column(
+    ada_profit: Mapped[int] = mapped_column(
         BigInteger
     )  # Net ada difference between inputs and outputs. TODO may not be necessary
     network_fee: Mapped[int] = mapped_column(BigInteger)
@@ -150,147 +141,6 @@ class Transaction(Base):
     net_assets: Mapped[dict] = mapped_column(JSON)
     slot: Mapped[int] = mapped_column(BigInteger)
     tx_hash: Mapped[str]
-
-
-# class Order(Base):
-#     __tablename__ = "Order"
-
-#     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-#     # Smart contract version eg. v1 orderbook, v2 orderbook, staking
-#     protocol: Mapped[str] = mapped_column()
-#     tx_id: Mapped[int] = mapped_column(
-#         ForeignKey(Tx.id, ondelete="cascade", onupdate="cascade"), index=True
-#     )
-
-#     # how much of the asked amount was received so far
-#     fulfilled_amount: Mapped[Decimal]
-#     # how much of the bid amount was paid so far
-#     paid_amount: Mapped[Decimal]
-#     batcher_fee: Mapped[Decimal]
-#     # Part of fee that was paid until now in case of partial matches
-#     # paid_fee: Mapped[Decimal]
-
-#     sender_pkh: Mapped[str]
-#     sender_skh: Mapped[str]
-#     beneficiary_pkh: Mapped[str]
-#     beneficiary_skh: Mapped[str]
-
-#     # ask = to, bid = from
-#     ask_token: Mapped[str] = mapped_column(index=True)
-#     bid_token: Mapped[str] = mapped_column(index=True)
-#     ask_amount: Mapped[Decimal]
-#     bid_amount: Mapped[Decimal]
-
-#     batcher_pkh: Mapped[str] = mapped_column(index=True)
-#     batcher_skh: Mapped[str] = mapped_column(index=True)
-
-#     # Additional batcher addresses?
-
-#     # To calculate how quickly the batcher fills the order
-#     placed_slot_no: Mapped[int] = mapped_column(BigInteger, index=True)
-#     fulfilled_slot_no: Mapped[int] = mapped_column(BigInteger, index=True)
-
-#     # By using the following relationship we avoid adding a new table
-#     cancellation_id: Mapped[int] = mapped_column(
-#         ForeignKey("Cancellation.id", ondelete="SET NULL", onupdate="cascade"),
-#         index=True,
-#         nullable=True,
-#     )
-
-#     full_match_id: Mapped[int] = mapped_column(
-#         ForeignKey("FullMatch.id", ondelete="SET NULL", onupdate="cascade"),
-#         index=True,
-#         nullable=True,
-#     )
-
-#     tx: Mapped[Tx] = relationship(back_populates="order")
-#     partial_matches: Mapped[List["PartialMatch"]] = relationship(
-#         back_populates="order", cascade="all, delete", order_by="PartialMatch.slot_no"
-#     )
-#     cancellation: Mapped["Cancellation"] = relationship(back_populates="order")
-#     full_match: Mapped["FullMatch"] = relationship(back_populates="order")
-
-#     # Avoids changing the schema if we want to parse something new from the trade UTxO/datum
-#     dex_specifics: Mapped[dict] = mapped_column(JSON, nullable=True)
-
-#     def get_current_utxo(self):
-#         """returns the most recent orderbook utxo - either original or partial match"""
-#         if len(self.partial_matches) > 0:
-#             return self.partial_matches[-1].new_utxo
-#         return self.tx
-
-#     # def get_status(self) -> OrderStatus:
-#     #     if self.cancellation_id is not None:
-#     #         return OrderStatus.CANCELLED
-#     #     if self.full_match_id is not None:
-#     #         return OrderStatus.FULFILLED
-#     #     if len(self.partial_matches) > 0:
-#     #         return OrderStatus.PARTIAL_MATCH
-#     #     return OrderStatus.OPEN
-
-#     # def finalized_at(self) -> int | None:
-#     #     if self.cancellation is not None:
-#     #         return util.slot_datestring(self.cancellation.slot_no)
-#     #     if self.full_match is not None:
-#     #         return util.slot_datestring(self.full_match.slot_no)
-#     #     return None
-
-#     __table_args__ = (
-#         Index("order_sender_pkh", "sender_pkh"),
-#         Index("order_sender_skh", "sender_skh"),
-#     )
-
-
-# class PartialMatch(Base):
-#     __tablename__ = "PartialMatch"
-#     id: Mapped[int] = mapped_column(primary_key=True)
-#     order_id: Mapped[int] = mapped_column(
-#         ForeignKey(Order.id, ondelete="cascade", onupdate="cascade")
-#     )
-#     new_utxo_id: Mapped[str] = mapped_column(
-#         ForeignKey(Tx.id, ondelete="cascade", onupdate="cascade")
-#     )
-#     order: Mapped[Order] = relationship(
-#         back_populates="partial_matches",
-#         cascade="all, delete",
-#         foreign_keys=[order_id],
-#         uselist=False,
-#     )
-#     new_utxo: Mapped[Tx] = relationship(
-#         cascade="all, delete", foreign_keys=[new_utxo_id], uselist=False
-#     )
-#     matched_amount: Mapped[Decimal]  # not cumulative
-#     paid_amount: Mapped[Decimal]  # not cumulative
-#     slot_no: Mapped[int]
-#     __table_args__ = (
-#         UniqueConstraint("order_id", "new_utxo_id", name="unique_utxo_order_pm_pair"),
-#         Index("partial_match_by_order_utxo", "order_id", "new_utxo_id"),
-#         Index("partial_match_by_order_slot_no", "order_id", "slot_no"),
-#     )
-
-
-# class Cancellation(Base):
-#     __tablename__ = "Cancellation"
-#     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-#     order: Mapped[Order] = relationship(
-#         back_populates="cancellation", cascade="all, delete", uselist=False
-#     )
-#     # block in which the match occurred (kept here since we don't track the utxo)
-#     slot_no: Mapped[int]
-#     tx_hash: Mapped[str]
-
-
-# class FullMatch(Base):
-#     __tablename__ = "FullMatch"
-#     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-#     order: Mapped[Order] = relationship(
-#         back_populates="full_match", cascade="all, delete", uselist=False
-#     )
-#     matched_amount: Mapped[Decimal]  # not cumulative
-#     paid_amount: Mapped[Decimal]  # not cumulative
-#     # block in which the match occurred (kept here since we don't track the utxo)
-#     slot_no: Mapped[int]
-#     tx_hash: Mapped[str]
 
 
 ########################################################################################

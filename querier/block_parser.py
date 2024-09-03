@@ -4,13 +4,14 @@ import ogmios
 from ogmios.datatypes import Block
 import datetime
 import logging
+import pycardano
 import ipdb
 
 import querier.util as util
 from common.db import UTxO, Order, _ENGINE, Transaction
 from common.util import slot_timestamp
 from .cleanup import remove_spent_utxos
-from .config import BLOCKFROST, MUESLI_POOL_ADDRESSES
+from .config import BLOCKFROST, POOL_CONTRACTS, MUESLI_ADDR_TO_VERSION
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,9 +51,7 @@ class BlockParser:
     def process_block(self, block: Block, session):
         self.current_slot = block.slot
         block_time = datetime.datetime.fromtimestamp(slot_timestamp(self.current_slot))
-        _LOGGER.info(
-            f"Processing block height: {self.current_slot} ({block_time.isoformat()})"
-        )
+        _LOGGER.info(f"Processing block: {block.height} ({block_time.isoformat()})")
         if (
             datetime.datetime.now() - self.latest_price_update
         ).total_seconds() > PRICE_UPDATE_INTERVAL:
@@ -80,6 +79,8 @@ class BlockParser:
                 order_ids.append(input_id)
         if calculate_analytics:
             input_utxos = session.query(UTxO).filter(UTxO.id.in_(input_ids)).all()
+            orders = session.query(Order).filter(Order.id.in_(order_ids)).all()
+
             # Number of cash UTxOs plus number of order UTxOs should equal total number of inputs
             if (len(input_utxos) + len(order_ids)) != len(input_ids):
                 try:
@@ -95,22 +96,32 @@ class BlockParser:
                             and input_id not in order_ids # Make sure the input is not an order
                         ):
                         # fmt: on
-                            input_utxos.append(
-                                UTxO(
-                                    id=input_id,
-                                    value=util.parse_value_bf_to_ogmios(utxo.amount),
-                                    owner=utxo.address,
-                                    created_slot=self.current_slot,  # TODO
-                                    block_hash="",  # TODO
+                            if utxo.address not in MUESLI_ADDR_TO_VERSION:
+                                input_utxos.append(
+                                    UTxO(
+                                        id=input_id,
+                                        value=util.parse_value_bf_to_ogmios(utxo.amount),
+                                        owner=utxo.address,
+                                        created_slot=self.current_slot,  # TODO
+                                        block_hash="",  # TODO
+                                    )
                                 )
-                            )
-                            # Blockfrost can return multiple instances of the same input,
-                            # and also inputs that are not in the transaction (why?)
+                                
+                            else:
+                                sender, recipient = util.parse_bf_datum(utxo, MUESLI_ADDR_TO_VERSION[utxo.address])
+                                orders.append(
+                                    Order(
+                                        id=input_id,
+                                        sender=sender,
+                                        recipient=recipient,
+                                        slot=self.current_slot, #TODO
+                                    )
+                                )
+                                order_ids.append(input_id)
                             stored_ids.append(input_id)
                 except Exception as e:
                     _LOGGER.error(f"Error fetching UTxOs: {e}")
                     return
-            orders = session.query(Order).filter(Order.id.in_(order_ids)).all()
         output_utxos = [
             util.parse_output(
                 tx=tx,
@@ -129,16 +140,9 @@ class BlockParser:
 
         if calculate_analytics:
             network_fee = tx["fee"]["ada"]["lovelace"]
-            batcher, ada_revenue, net_assets, equivalent_ada = util.calculate_analytics(
-                inputs=[i for i in input_utxos if i.owner not in MUESLI_POOL_ADDRESSES],
-                outputs=[
-                    output
-                    for output in output_utxos
-                    if (
-                        isinstance(output, UTxO)
-                        and output.owner not in MUESLI_POOL_ADDRESSES
-                    )
-                ],
+            batcher, ada_profit, net_assets, equivalent_ada = util.calculate_analytics(
+                inputs=util.filter_utxos(input_utxos),
+                outputs=util.filter_utxos(output_utxos),
                 orders=orders,
                 session=session,
                 prices=self.prices,
@@ -146,7 +150,7 @@ class BlockParser:
             session.add(
                 Transaction(
                     batcher=batcher,
-                    ada_revenue=ada_revenue,
+                    ada_profit=ada_profit,
                     network_fee=network_fee,
                     equivalent_ada=equivalent_ada,
                     net_assets=net_assets,

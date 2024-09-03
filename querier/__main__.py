@@ -24,13 +24,13 @@ class SynchronizedIterator:
 
     def submit_block(self, block):
         with self.lock:
-            self.queue.append(block)
             if len(self.queue) > 1000:
-                # i think this should happen but still
-                time.sleep(10)
-                # _LOGGER.warning(f"QUERIER IS LAGGING BEHIND! {len(self.queue)}")
+                _LOGGER.warning(f"QUERIER IS LAGGING BEHIND! {len(self.queue)}")
+                return False
+            self.queue.append(block)
         with self.has_updated:
             self.has_updated.notify()
+        return True
 
     def iterate_blocks(self):
         while not self.should_exit:
@@ -99,7 +99,10 @@ def _run_ogmios_async(start_slot_no, start_block_hash, iterator: SynchronizedIte
         ogmios = OgmiosIterator()
         block_generator = ogmios.iterate_blocks(start_slot_no, start_block_hash)
         for block in block_generator:
-            iterator.submit_block(block)
+            while not iterator.submit_block(block):
+                if iterator.should_exit:
+                    break
+                time.sleep(5)
             if iterator.should_exit:
                 break
     except Exception as ex:

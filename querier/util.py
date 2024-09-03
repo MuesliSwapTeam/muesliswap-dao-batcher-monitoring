@@ -8,11 +8,18 @@ from cardano_python_utils.classes import Token, LOVELACE, ShelleyAddress
 import ipdb
 from argparse import Namespace
 from collections import defaultdict
+import pycardano
 
 
 from common.db import Batcher, BatcherAddress, Order, Transaction, UTxO
 from common.util import parse_assets_to_list
-from .config import MUESLI_ADDR_TO_VERSION, PRICE_EP, MUESLI_POOL_ADDRESSES
+from .config import (
+    MUESLI_ADDR_TO_VERSION,
+    PRICE_EP,
+    BLOCKFROST,
+    POOL_CONTRACTS,
+    MUESLISWAP_PROFIT_ADDRESSES,
+)
 
 
 def get_prices():
@@ -97,14 +104,27 @@ def parse_datum(tx: dict, output: dict, contract_version: str):
 
     if contract_version in ["v2", "v3", "v4"]:
         datum = datum["fields"][0]["fields"]
+        sender_pkh, sender_skh = parse_wallet_address(datum[0])
+        sender = sender_pkh + sender_skh
+        return sender, sender
+
+
+def parse_bf_datum(utxo: Namespace, contract_version: str):
+    if utxo.inline_datum:
+        datum = datum_from_cborhex(utxo.inline_datum)
+    else:
+        datum = BLOCKFROST.script_datum_cbor(utxo.data_hash)
+        datum = datum_from_cborhex(datum.cbor)
+
+    if "lq" in contract_version:
+        sender_pkh, sender_skh = parse_wallet_address(datum["fields"][0])
+        recipient_pkh, recipient_skh = parse_wallet_address(datum["fields"][1])
+        return sender_pkh + sender_skh, recipient_pkh + recipient_skh
+
+    if contract_version in ["v2", "v3", "v4"]:
+        datum = datum["fields"][0]["fields"]
         sender_skh, sender_pkh = parse_wallet_address(datum[0])
         sender = sender_pkh + sender_skh
-        # buy_token = Token(datum[1]["bytes"], datum[2]["bytes"])
-        # sell_token = Token(datum[3]["bytes"], datum[4]["bytes"])
-        # buy_amount = int(datum[5]["int"])
-        # allow_partial = datum[6]["constructor"] == 1
-        # not actually used by SC, frontend only; someone even omits this
-        # lovelace_attached = int(datum[7]["int"]) if len(datum) > 7 else 0
         return sender, sender
 
 
@@ -119,11 +139,33 @@ def parse_wallet_address(datum: dict):
     return (pkh, skh)
 
 
+def address_hex_to_bech32(pkh: str = None, skh: str = None, full: str = None) -> str:
+    if full:
+        return ShelleyAddress(
+            mainnet=True, pubkeyhash=full[:56], stakekeyhash=full[56:]
+        ).bech32
+    return ShelleyAddress(mainnet=True, pubkeyhash=pkh, stakekeyhash=skh).bech32
+
+
 def parse_value_bf_to_ogmios(value: Namespace) -> dict:
     ret = {}
     for asset in value:
         token = Token.from_hex(asset.unit)
         ret[token.policy_id] = {token.name: asset.quantity}
+
+    return ret
+
+
+def filter_utxos(outputs):
+    ret = []
+    for o in outputs:
+        if not isinstance(o, UTxO):
+            continue
+        if str(pycardano.Address.decode(o.owner).payment_part) in POOL_CONTRACTS:
+            continue
+        if o.owner in MUESLISWAP_PROFIT_ADDRESSES:
+            continue
+        ret.append(o)
 
     return ret
 
@@ -139,6 +181,8 @@ def calculate_analytics(
     Returns the batcher, batcher's ADA revenue, a dictionary mapping non-ADA tokens to their revenue
     and a sum of the non-ADA amounts converted to ADA using the latest prices.
     """
+
+    # TODO correctly handle multiple order transactions
     recipients = [
         ShelleyAddress(
             mainnet=True, pubkeyhash=o.recipient[:56], stakekeyhash=o.recipient[56:]
@@ -155,8 +199,8 @@ def calculate_analytics(
     in_assets = defaultdict(int)
     addresses = set()
     for input_utxo in inputs:
-        # if input_utxo.owner in MUESLI_POOL_ADDRESSES:
-        #     continue
+        if input_utxo.owner in senders:
+            continue
         addresses.add(input_utxo.owner)
         assets = parse_assets_to_list(input_utxo.value)
         for asset in assets:
@@ -164,7 +208,11 @@ def calculate_analytics(
 
     addresses = list(addresses)
 
-    if len(addresses) == 1:
+    if len(addresses) == 0:
+        # Can happen for some cancellations
+        batcher = None
+
+    elif len(addresses) == 1:
         try:
             batcher = (
                 session.query(Batcher)
@@ -182,6 +230,7 @@ def calculate_analytics(
                 f"Multiple batchers associated with address: {addresses[0]}"
             )
     else:
+        ipdb.set_trace()
         batcher_list = []
         unassociated_addresses = []
         for address in addresses:
@@ -205,6 +254,8 @@ def calculate_analytics(
                 if batcher_list[0].id != batcher_list[i].id:
                     for address in batcher_list[i].addresses:
                         address.batcher_id = batcher_list[0].id
+                    for transaction in batcher_list[i].transactions:
+                        transaction.batcher_id = batcher_list[0].id
                     session.delete(batcher_list[i])
             batcher = batcher_list[0]
         for unassociated_address in unassociated_addresses:
@@ -234,7 +285,7 @@ def calculate_analytics(
         if token not in out_assets:
             differences[token] = -amount
 
-    ada_revenue = 0
+    ada_profit = 0
     equivalent_ada = 0
     zero_revenue_tokens = []
     for token, amount in differences.items():
@@ -242,7 +293,7 @@ def calculate_analytics(
             zero_revenue_tokens.append(token)
             continue
         if token == LOVELACE:
-            ada_revenue += amount
+            ada_profit += amount
         else:
             equivalent_ada += (
                 amount * prices.get(("", token.subject), {"price": 0})["price"]
@@ -250,8 +301,12 @@ def calculate_analytics(
     for token in zero_revenue_tokens:
         del differences[token]
 
-    del differences[LOVELACE]
+    if LOVELACE in differences:
+        del differences[LOVELACE]
 
     differences = {k.to_hex(): v for k, v in differences.items()}
 
-    return (batcher, ada_revenue, differences, equivalent_ada)
+    if not batcher and len(addresses) > 0:
+        ipdb.set_trace()
+
+    return (batcher, ada_profit, differences, equivalent_ada)
