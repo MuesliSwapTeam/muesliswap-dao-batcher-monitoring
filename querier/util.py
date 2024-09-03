@@ -25,28 +25,6 @@ from .config import (
 _LOGGER = logging.getLogger(__name__)
 
 
-# def get_prices():
-#     try:
-
-#         response = requests.get(PRICE_EP)
-#         response.raise_for_status()  # Raise an exception for HTTP errors
-
-#         # Check if the content type is the one expected for a pickle file
-#         if "application/octet-stream" in response.headers.get("Content-Type", ""):
-#             data = pickle.loads(response.content)  # Deserialize the pickle data
-#         else:
-#             print("Unexpected content type:", response.headers.get("Content-Type"))
-#             return None
-
-#         return data
-#     except requests.exceptions.RequestException as e:
-#         print(f"Error querying prices: {e}")
-#         return None
-#     except pickle.UnpicklingError as e:
-#         print(f"Error unpickling data: {e}")
-#         return None
-
-
 def get_price_in_ada(token: Token):
     quote_policy_id = ""
     quote_name = ""

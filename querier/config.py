@@ -63,7 +63,6 @@ DEFAULT_START_SLOT = 133706202
 DEFAULT_START_HASH = "770685fbaa53286ced25d46d6e1756eca23a143b493e194577fee1870aeda5cc"
 
 OGMIOS_URL = os.environ.get("OGMIOS_URL", "ws://localhost:1337")
-# PRICE_EP = "https://aggregator-analytics.muesliswap.com/v2/all-prices"
 PRICE_EP = "https://api.muesliswap.com/price"
 BLOCKFROST = blockfrost.BlockFrostApi(
     BLOCKFROST_PROJECT_ID, base_url="https://cardano-mainnet.blockfrost.io/api"
