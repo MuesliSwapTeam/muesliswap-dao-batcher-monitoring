@@ -1,6 +1,4 @@
-flask
-flask_cors
-flask_caching
+fastapi[standard]
 gunicorn
 psycopg[binary]
 -e ./muesliswap-cardano-python-utils

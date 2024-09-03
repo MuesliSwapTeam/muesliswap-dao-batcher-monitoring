@@ -9,6 +9,7 @@ import ipdb
 from argparse import Namespace
 from collections import defaultdict
 import pycardano
+import logging
 
 
 from common.db import Batcher, BatcherAddress, Order, Transaction, UTxO
@@ -20,6 +21,8 @@ from .config import (
     POOL_CONTRACTS,
     MUESLISWAP_PROFIT_ADDRESSES,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def get_prices():
@@ -45,14 +48,12 @@ def get_prices():
 
 
 def initialise_open_orders(engine: sqlalchemy.engine) -> dict:
-    # TODO query blockfrost for open orders that have not yet been seen
 
     open_orders = dict()
 
     with Session(engine) as session:
         query = session.query(Order.id).filter(Order.transaction_id == None)
         for row in query.all():
-            # TODO change this to a list
             open_orders[row[0]] = True
     return open_orders
 
@@ -95,7 +96,7 @@ def parse_datum(tx: dict, output: dict, contract_version: str):
         datum = datum_from_cborhex(tx["datums"][datum_hash])
     else:
         # TODO handle muesli v1 reconstruct datum from metadata
-        pass
+        _LOGGER.error(f"Failed to handle muesliv1 datum reconstruction")
 
     if "lq" in contract_version:
         sender_pkh, sender_skh = parse_wallet_address(datum["fields"][0])
@@ -182,7 +183,6 @@ def calculate_analytics(
     and a sum of the non-ADA amounts converted to ADA using the latest prices.
     """
 
-    # TODO correctly handle multiple order transactions
     recipients = [
         ShelleyAddress(
             mainnet=True, pubkeyhash=o.recipient[:56], stakekeyhash=o.recipient[56:]

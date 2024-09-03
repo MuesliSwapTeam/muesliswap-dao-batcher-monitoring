@@ -6,11 +6,8 @@ import ipdb
 from common.db import (
     _ENGINE,
     UTxO,
-    # PartialMatch,
     Order,
     get_max_slot_block_and_index,
-    # FullMatch,
-    # Cancellation,
 )
 
 
@@ -47,6 +44,8 @@ class RollbackHandler:
         return self.slot, self.block_hash
 
     def rollback(self):
+        # TODO properly implement
+
         # delete everything newer than the block that we roll back to
         _LOGGER.warning(f"Executing rollback to block {self.slot}.{self.block_hash}")
 

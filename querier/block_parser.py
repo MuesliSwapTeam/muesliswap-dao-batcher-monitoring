@@ -11,7 +11,7 @@ import querier.util as util
 from common.db import UTxO, Order, _ENGINE, Transaction
 from common.util import slot_timestamp
 from .cleanup import remove_spent_utxos
-from .config import BLOCKFROST, POOL_CONTRACTS, MUESLI_ADDR_TO_VERSION
+from .config import BLOCKFROST, MUESLI_ADDR_TO_VERSION
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,8 +102,8 @@ class BlockParser:
                                         id=input_id,
                                         value=util.parse_value_bf_to_ogmios(utxo.amount),
                                         owner=utxo.address,
-                                        created_slot=self.current_slot,  # TODO
-                                        block_hash="",  # TODO
+                                        created_slot=0,  
+                                        block_hash="",  
                                     )
                                 )
                                 
@@ -114,7 +114,7 @@ class BlockParser:
                                         id=input_id,
                                         sender=sender,
                                         recipient=recipient,
-                                        slot=self.current_slot, #TODO
+                                        slot=0, 
                                     )
                                 )
                                 order_ids.append(input_id)
