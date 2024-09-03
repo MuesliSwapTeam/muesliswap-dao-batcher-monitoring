@@ -19,32 +19,50 @@ from .config import (
     PRICE_EP,
     BLOCKFROST,
     POOL_CONTRACTS,
-    MUESLISWAP_PROFIT_ADDRESSES,
+    PROFIT_ADDRESSES,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def get_prices():
-    try:
+# def get_prices():
+#     try:
 
-        response = requests.get(PRICE_EP)
-        response.raise_for_status()  # Raise an exception for HTTP errors
+#         response = requests.get(PRICE_EP)
+#         response.raise_for_status()  # Raise an exception for HTTP errors
 
-        # Check if the content type is the one expected for a pickle file
-        if "application/octet-stream" in response.headers.get("Content-Type", ""):
-            data = pickle.loads(response.content)  # Deserialize the pickle data
-        else:
-            print("Unexpected content type:", response.headers.get("Content-Type"))
-            return None
+#         # Check if the content type is the one expected for a pickle file
+#         if "application/octet-stream" in response.headers.get("Content-Type", ""):
+#             data = pickle.loads(response.content)  # Deserialize the pickle data
+#         else:
+#             print("Unexpected content type:", response.headers.get("Content-Type"))
+#             return None
 
-        return data
-    except requests.exceptions.RequestException as e:
-        print(f"Error querying prices: {e}")
-        return None
-    except pickle.UnpicklingError as e:
-        print(f"Error unpickling data: {e}")
-        return None
+#         return data
+#     except requests.exceptions.RequestException as e:
+#         print(f"Error querying prices: {e}")
+#         return None
+#     except pickle.UnpicklingError as e:
+#         print(f"Error unpickling data: {e}")
+#         return None
+
+
+def get_price_in_ada(token: Token):
+    quote_policy_id = ""
+    quote_name = ""
+    base_policy_id = token.policy_id
+    base_name = token.name
+
+    # Base and quote are flipped because that is how the middleware expects it :(
+    params = {
+        "quote-policy-id": base_policy_id,
+        "quote-tokenname": base_name,
+        "base-policy-id": quote_policy_id,
+        "base-tokenname": quote_name,
+    }
+
+    response = requests.get(PRICE_EP, params=params)
+    return response.json()
 
 
 def initialise_open_orders(engine: sqlalchemy.engine) -> dict:
@@ -96,7 +114,12 @@ def parse_datum(tx: dict, output: dict, contract_version: str):
         datum = datum_from_cborhex(tx["datums"][datum_hash])
     else:
         # TODO handle muesli v1 reconstruct datum from metadata
-        _LOGGER.error(f"Failed to handle muesliv1 datum reconstruction")
+        _LOGGER.error(
+            f"No datum attached.\n"
+            f"  Smart contract version: {contract_version}.\n"
+            f"  Transaction: {tx['id']}"
+        )
+        raise Exception("No datum attached")
 
     if "lq" in contract_version:
         sender_pkh, sender_skh = parse_wallet_address(datum["fields"][0])
@@ -164,7 +187,7 @@ def filter_utxos(outputs):
             continue
         if str(pycardano.Address.decode(o.owner).payment_part) in POOL_CONTRACTS:
             continue
-        if o.owner in MUESLISWAP_PROFIT_ADDRESSES:
+        if o.owner in PROFIT_ADDRESSES:
             continue
         ret.append(o)
 
@@ -176,7 +199,6 @@ def calculate_analytics(
     outputs: List[UTxO],
     orders: List[Order],
     session: Session,
-    prices=None,
 ) -> Tuple[Batcher, dict, int, int]:
     """
     Returns the batcher, batcher's ADA revenue, a dictionary mapping non-ADA tokens to their revenue
@@ -295,9 +317,8 @@ def calculate_analytics(
         if token == LOVELACE:
             ada_profit += amount
         else:
-            equivalent_ada += (
-                amount * prices.get(("", token.subject), {"price": 0})["price"]
-            )
+            prices = get_price_in_ada(token)
+            equivalent_ada += amount * prices["price"]
     for token in zero_revenue_tokens:
         del differences[token]
 

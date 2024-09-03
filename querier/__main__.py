@@ -25,7 +25,7 @@ class SynchronizedIterator:
     def submit_block(self, block):
         with self.lock:
             if len(self.queue) > 3000:
-                _LOGGER.warning(f"QUERIER IS LAGGING BEHIND! {len(self.queue)}")
+                # _LOGGER.info(f"QUERIER IS LAGGING BEHIND! {len(self.queue)}")
                 return False
             self.queue.append(block)
         with self.has_updated:

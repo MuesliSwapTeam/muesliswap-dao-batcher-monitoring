@@ -15,7 +15,6 @@ from .config import BLOCKFROST, MUESLI_ADDR_TO_VERSION
 
 
 _LOGGER = logging.getLogger(__name__)
-PRICE_UPDATE_INTERVAL = 180
 
 
 class BlockParser:
@@ -27,8 +26,6 @@ class BlockParser:
         self.current_slot = -1
 
         self.open_orders = util.initialise_open_orders(engine=self.engine)
-        self.prices = util.get_prices()
-        self.latest_price_update = datetime.datetime.now() if self.prices else -1
 
     def add_open_order(self, utxo_id: str):
         self.open_orders[utxo_id] = True
@@ -52,15 +49,13 @@ class BlockParser:
         self.current_slot = block.slot
         block_time = datetime.datetime.fromtimestamp(slot_timestamp(self.current_slot))
         _LOGGER.info(f"Processing block: {block.height} ({block_time.isoformat()})")
-        if (
-            datetime.datetime.now() - self.latest_price_update
-        ).total_seconds() > PRICE_UPDATE_INTERVAL:
-            self.prices = util.get_prices()
-            self.latest_price_update = datetime.datetime.now()
 
         for tx in block.transactions:
             # TODO add error handling here if necessary
-            self.process_tx(tx, block, session)
+            try:
+                self.process_tx(tx, block, session)
+            except Exception as e:
+                _LOGGER.error(f"Error processing tx: {e}")
 
     def process_tx(self, tx, block, session):
         order_ids = []
@@ -145,7 +140,6 @@ class BlockParser:
                 outputs=util.filter_utxos(output_utxos),
                 orders=orders,
                 session=session,
-                prices=self.prices,
             )
             session.add(
                 Transaction(

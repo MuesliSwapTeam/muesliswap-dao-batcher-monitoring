@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+import ipdb
 
 from common.db import Batcher, BatcherAddress, Transaction
 
@@ -24,3 +25,59 @@ def get_batchers(session: Session):
         )
 
     return result
+
+
+def batcher_stats(session: Session, address: str):
+    result = (
+        session.query(
+            func.max(Transaction.ada_profit + Transaction.equivalent_ada),
+            func.min(Transaction.ada_profit + Transaction.equivalent_ada),
+            func.avg(Transaction.ada_profit + Transaction.equivalent_ada),
+            func.sum(Transaction.ada_profit + Transaction.equivalent_ada),
+        )
+        .join(Batcher, Batcher.id == Transaction.batcher_id)
+        .join(BatcherAddress, BatcherAddress.batcher_id == Batcher.id)
+        .filter(BatcherAddress.address == address)
+    )
+
+    max_profit, min_profit, avg_profit, total = result.first()
+
+    if max_profit is None:
+        return None
+
+    return {
+        "max_profit": max_profit,
+        "min_profit": min_profit,
+        "avg_profit": avg_profit,
+        "total": total,
+    }
+
+
+def all_batcher_stats(session: Session):
+    result = (
+        session.query(
+            func.max(Transaction.ada_profit + Transaction.equivalent_ada),
+            func.min(Transaction.ada_profit + Transaction.equivalent_ada),
+            func.avg(Transaction.ada_profit + Transaction.equivalent_ada),
+            func.sum(Transaction.ada_profit + Transaction.equivalent_ada),
+            func.count(Transaction.id),
+            Batcher,
+        )
+        .join(Batcher, Batcher.id == Transaction.batcher_id)
+        .options(joinedload(Batcher.addresses))
+        .group_by(Batcher.id)
+    )
+
+    response = []
+    for max_profit, min_profit, avg_profit, total, num_transactions, batcher in result:
+        response.append(
+            {
+                "max_profit": max_profit,
+                "min_profit": min_profit,
+                "avg_profit": avg_profit,
+                "total": total,
+                "num_transactions": num_transactions,
+                "addresses": [address.address for address in batcher.addresses],
+            }
+        )
+    return response
