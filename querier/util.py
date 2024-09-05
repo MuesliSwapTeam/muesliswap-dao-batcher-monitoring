@@ -228,7 +228,6 @@ def calculate_analytics(
                 f"Multiple batchers associated with address: {addresses[0]}"
             )
     else:
-        ipdb.set_trace()
         batcher_list = []
         unassociated_addresses = []
         for address in addresses:
@@ -304,6 +303,9 @@ def calculate_analytics(
     differences = {k.to_hex(): v for k, v in differences.items()}
 
     if not batcher and len(addresses) > 0:
-        ipdb.set_trace()
+        _LOGGER.error(
+            f"No batcher created found for addresses: {addresses}\n"
+            f"Transaction:{outputs[0].id[:-2]}"
+        )
 
     return (batcher, ada_profit, differences, equivalent_ada)
