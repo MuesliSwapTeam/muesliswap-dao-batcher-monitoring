@@ -38,3 +38,8 @@ async def batcher_stats(address: str, session: Session = Depends(get_session)):
 @app.get("/all-stats")
 async def all_batcher_stats(session: Session = Depends(get_session)):
     return crud.all_batcher_stats(session)
+
+
+@app.get("/transactions")
+async def batcher_transactions(address: str, session: Session = Depends(get_session)):
+    return crud.batcher_transactions(session, address)
