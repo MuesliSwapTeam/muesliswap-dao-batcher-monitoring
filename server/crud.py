@@ -19,7 +19,7 @@ def get_batchers(session: Session):
     for batcher, transaction_count in batchers:
         result.append(
             {
-                "transaction_count": transaction_count,
+                "num_transactions": transaction_count,
                 "addresses": [address.address for address in batcher.addresses],
             }
         )
