@@ -1,4 +1,0 @@
-[submodule "muesliswap-cardano-python-utils"]
-	path = muesliswap-cardano-python-utils
-	url = git@github.com:MuesliSwapLabs/muesliswap-cardano-python-utils.git
-	branch = feat/support_ogmios_6
