@@ -3,7 +3,6 @@ import os
 from typing import List
 
 import sqlalchemy as sqla
-from cardano_python_utils.classes import Asset, Token, LOVELACE, ShelleyAddress  # type: ignore
 from sqlalchemy import ForeignKey, Index, JSON, BigInteger
 from sqlalchemy.orm import (
     DeclarativeBase,

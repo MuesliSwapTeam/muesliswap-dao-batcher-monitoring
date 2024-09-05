@@ -81,3 +81,6 @@ def all_batcher_stats(session: Session):
             }
         )
     return response
+
+
+# List of transaction per batcher

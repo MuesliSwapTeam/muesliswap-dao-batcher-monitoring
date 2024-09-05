@@ -6,6 +6,8 @@ os.makedirs(LOG_DIR, exist_ok=True)
 # custom loglevel for benchmarks (debug=10, info=20)
 LOG_BENCH = 15
 
+OGMIOS_HOSTNAME = os.environ.get("OGMIOS_HOSTNAME", "localhost")
+
 
 logging.config.dictConfig(
     {

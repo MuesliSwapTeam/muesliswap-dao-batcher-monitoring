@@ -13,6 +13,9 @@ services:
       interval: 2s
       timeout: 5s
       retries: 10
+    networks:
+      app_network:
+      
 
   ogmios:
     # Connects to the Cardano node and provides an API for accessing blocks
@@ -25,6 +28,10 @@ services:
     ]
     volumes:
       - /home/cardano/cardano-node/db/:/ipc
+    networks:
+      app_network:
+        aliases:
+          - batcher-ogmios
 
 
   querier:
@@ -38,11 +45,14 @@ services:
       context: .
     environment:
       DATABASE_URI: "postgresql+psycopg://${POSTGRES_USER:-analytics}:${POSTGRES_PASSWORD:-analytics}@database:5432/${POSTGRES_DB:-batcher_analytics}"
-      OGMIOS_URL: "ws://ogmios:1337"
-    command: python -m querier
+      OGMIOS_URL: "ws://batcher-ogmios:1337"
+      OGMIOS_HOSTNAME: "batcher-ogmios"
+    command: ["python", "-m", "querier"]
     restart: always
     volumes:
       - ./logs:/app/logs
+    networks:
+      app_network:
 
   server:
     # Serves data from database 
@@ -55,8 +65,12 @@ services:
       DATABASE_URI: "postgresql+psycopg://${POSTGRES_USER:-analytics}:${POSTGRES_PASSWORD:-analytics}@database:5432/${POSTGRES_DB:-batcher_analytics}"
     ports:
       - 8000:8000
-
     command: ["fastapi", "run", "server/serve.py"]
+    networks:
+      app_network:
 
 volumes:
   postgres-data:
+
+networks:
+  app_network:
