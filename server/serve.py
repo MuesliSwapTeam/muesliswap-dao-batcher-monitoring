@@ -42,4 +42,6 @@ async def all_batcher_stats(session: Session = Depends(get_session)):
 
 @app.get("/transactions")
 async def batcher_transactions(address: str, session: Session = Depends(get_session)):
-    return crud.batcher_transactions(session, address)
+    response = crud.batcher_transactions(session, address)
+    if not response:
+        raise HTTPException(status_code=404, detail="Batcher not found")
