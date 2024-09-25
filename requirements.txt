@@ -1,4 +1,5 @@
 fastapi[standard]
+fastapi-cache2
 gunicorn
 psycopg[binary]
 orjson
