@@ -197,16 +197,22 @@ def calculate_analytics(
     ]
 
     in_assets = defaultdict(int)
-    addresses = set()
+    input_addresses = set()
     for input_utxo in inputs:
         if input_utxo.owner in senders:
             continue
-        addresses.add(input_utxo.owner)
+        input_addresses.add(input_utxo.owner)
         assets = parse_assets_to_list(input_utxo.value)
         for asset in assets:
             in_assets[asset.token] += asset.amount
 
-    addresses = list(addresses)
+    output_addresses = set()
+    for output_utxo in outputs:
+        output_addresses.add(output_utxo.owner)
+    input_addresses = list(input_addresses)
+    output_addresses = list(output_addresses)
+    # Batchers should have at least one UTxO in the inputs and the outputs
+    addresses = [address for address in input_addresses if address in output_addresses]
 
     if len(addresses) == 0:
         # Can happen for some cancellations
