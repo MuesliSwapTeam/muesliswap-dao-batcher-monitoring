@@ -1,7 +1,6 @@
 fastapi[standard]
 gunicorn
 psycopg[binary]
--e ./muesliswap-cardano-python-utils
 orjson
 pyahocorasick
 sqlalchemy>=2.0

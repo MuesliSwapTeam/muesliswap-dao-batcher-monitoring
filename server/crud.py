@@ -19,7 +19,7 @@ def get_batchers(session: Session):
     for batcher, transaction_count in batchers:
         result.append(
             {
-                "transaction_count": transaction_count,
+                "num_transactions": transaction_count,
                 "addresses": [address.address for address in batcher.addresses],
             }
         )
@@ -81,3 +81,26 @@ def all_batcher_stats(session: Session):
             }
         )
     return response
+
+
+# List of transactions per batcher
+def batcher_transactions(session: Session, address: str):
+    batcher = (
+        session.query(Batcher)
+        .options(joinedload(Batcher.transactions))  # Eager load transactions
+        .filter(Batcher.addresses.any(address=address))
+        .first()
+    )
+
+    result = []
+    for transaction in batcher.transactions:
+        result.append(
+            {
+                "tx_hash": transaction.tx_hash,
+                "ada_profit": transaction.ada_profit,
+                "non_ada_profit": transaction.equivalent_ada,
+                "other_assets": transaction.net_assets,
+            }
+        )
+
+    return result

@@ -1,5 +1,8 @@
 import ogmios
 from ogmios.datatypes import TxOutputReference
+import os
+
+OGMIOS_HOSTNAME = os.environ.get("OGMIOS_HOSTNAME", "localhost")
 
 if __name__ == "__main__":
     with ogmios.Client() as client:

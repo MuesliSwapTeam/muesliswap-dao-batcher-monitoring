@@ -1,6 +1,7 @@
 import ogmios
 from ogmios.datatypes import Point
 from .rollback import RollbackHandler
+from . import OGMIOS_HOSTNAME
 
 num_blocks_to_queue = 100
 
@@ -32,7 +33,7 @@ class OgmiosIterator:
 
     def iterate_blocks(self, start_slot_no, start_block_hash):
 
-        with ogmios.Client() as client:
+        with ogmios.Client(host=OGMIOS_HOSTNAME) as client:
             # Ensures that the client points to the latest block in our database
             self._init_connection(client, start_slot_no, start_block_hash)
             for i in range(num_blocks_to_queue):

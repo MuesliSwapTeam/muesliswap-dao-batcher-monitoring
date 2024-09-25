@@ -1,6 +1,7 @@
 import datetime
-from cardano_python_utils.classes import Asset, Token
 from typing import List
+
+from common.classes import Asset, Token
 
 
 def slot_timestamp(slot_no: int) -> int:
